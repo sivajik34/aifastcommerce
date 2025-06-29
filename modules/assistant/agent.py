@@ -61,31 +61,42 @@ async def async_add_to_cart_tool(user_id: int, product_id: int, quantity: int):
         return f"Added to cart: Product {result.product_id} x {result.quantity}"
 
 
-async def async_place_order_tool(user_id: int, items: List[dict]):
+async def async_place_order_tool(user_id: int, items):
+    import json
+    print("DEBUG: async_place_order_tool called")
+    print("User ID:", user_id)
+    print("Items:", items)
+
     try:
-        print("DEBUG: async_place_order_tool called")
-        print("User ID:", user_id)
-        print("Items:", items)
-        import json
+        # 👇 Fallback: If items is a string, parse it manually
         if isinstance(items, str):
-            items = json.loads(items)
+            try:
+                items = json.loads(items)
+            except json.JSONDecodeError:
+                # Handle custom-delimited formats like: "1,2,1500.0;3,2,199.99"
+                parsed_items = []
+                for part in items.split(";"):
+                    fields = part.strip().split(",")
+                    if len(fields) == 3:
+                        product_id, quantity, price = fields
+                        parsed_items.append({
+                            "product_id": int(product_id),
+                            "quantity": int(quantity),
+                            "price": float(price)
+                        })
+                items = parsed_items
 
         total = 0
+        order_items = []
+
         for item in items:
             print("Item:", item)
-            # Make sure price and quantity are present and numeric
             price = float(item.get("price", 0))
             quantity = int(item.get("quantity", 0))
             total += price * quantity
+            order_items.append(OrderItemCreate(**item))
 
         print("Total amount calculated:", total)
-
-        order_items = []
-        for item in items:
-            order_item = OrderItemCreate(**item)
-            order_items.append(order_item)
-            print("Order item created:", order_item)
-
         order_data = OrderCreate(user_id=user_id, total_amount=total, items=order_items)
         print("Order data prepared:", order_data)
 
@@ -98,6 +109,7 @@ async def async_place_order_tool(user_id: int, items: List[dict]):
     except Exception as e:
         print("ERROR in async_place_order_tool:", str(e))
         return f"Failed to place order: {str(e)}"
+
 
 
 

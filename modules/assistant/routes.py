@@ -10,7 +10,7 @@ async def chat_with_agent(request: ChatRequest):
         result = await ecommerce_assistant(request.message, request.history)
         return {
             "response": result["response"],
-            "history": result["history"],  # Already a list of dicts with "role" and "content"
+            "history": result["history"],  # Already a list of dicts with "role" and "content".
         }
     except Exception as e:
         return {"error": str(e)}

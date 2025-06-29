@@ -9,3 +9,7 @@ app.include_router(catalog_router)
 app.include_router(cart_router)
 app.include_router(order_router)
 app.include_router(assistant_router)
+
+@app.get("/health")
+def health_check():
+    return {"status": "BuyBot backend is running 🚀"}
