@@ -1,0 +1,82 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+env/
+pip-selfcheck.json
+
+# IDEs
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# Pytest
+.cache/
+pytest_cache/
+
+# MyPy
+.mypy_cache/
+
+# SQLAlchemy / Alembic
+alembic/versions/*.pyc
+alembic/versions/__pycache__/
+
+# Logs
+*.log
+*.log.*
+
+# MacOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Python egg info
+*.egg-info/
+.eggs/
+
+# Builds
+build/
+dist/
+*.egg
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+
+# Database files
+*.sqlite3
+
+# Local Docker files
+*.pid
+*.tar
+*.bak
+*.tmp
+
+# dotenv
+.env
+.env.*
+
+# Editor swap files
+*.swp
+*.swo
+
+# Ignore local scripts or debug files
+scripts/__pycache__/
+scripts/*.log
+scripts/*.bak
