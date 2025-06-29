@@ -80,3 +80,10 @@ htmlcov/
 scripts/__pycache__/
 scripts/*.log
 scripts/*.bak
+
+frontend/node_modules/
+frontend/.DS_Store
+frontend/.env
+frontend/.eslintcache
+frontend/build/
+frontend/dist/

@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from contextlib import asynccontextmanager
 
-from langchain.schema import  BaseMessage
+from langchain_core.messages import BaseMessage
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
@@ -17,6 +17,7 @@ from modules.cart.service import add_to_cart
 from modules.checkout.service import create_order
 from modules.cart.schema import CartItemCreate
 from modules.checkout.schema import OrderCreate, OrderItemCreate
+from modules.assistant.schema import ChatMessage
 
 
 # ---- Async DB Session Utility ----
@@ -61,12 +62,43 @@ async def async_add_to_cart_tool(user_id: int, product_id: int, quantity: int):
 
 
 async def async_place_order_tool(user_id: int, items: List[dict]):
-    async with get_db_session() as db:
-        total = sum(item["price"] * item["quantity"] for item in items)
-        order_items = [OrderItemCreate(**item) for item in items]
+    try:
+        print("DEBUG: async_place_order_tool called")
+        print("User ID:", user_id)
+        print("Items:", items)
+        import json
+        if isinstance(items, str):
+            items = json.loads(items)
+
+        total = 0
+        for item in items:
+            print("Item:", item)
+            # Make sure price and quantity are present and numeric
+            price = float(item.get("price", 0))
+            quantity = int(item.get("quantity", 0))
+            total += price * quantity
+
+        print("Total amount calculated:", total)
+
+        order_items = []
+        for item in items:
+            order_item = OrderItemCreate(**item)
+            order_items.append(order_item)
+            print("Order item created:", order_item)
+
         order_data = OrderCreate(user_id=user_id, total_amount=total, items=order_items)
-        order = await create_order(order_data, db)
+        print("Order data prepared:", order_data)
+
+        async with get_db_session() as db:
+            order = await create_order(order_data, db)
+            print("Order created with ID:", order.id)
+
         return f"Order placed! Order ID: {order.id}, Total: {order.total_amount}"
+
+    except Exception as e:
+        print("ERROR in async_place_order_tool:", str(e))
+        return f"Failed to place order: {str(e)}"
+
 
 
 # ---- Define Tools ----
@@ -195,16 +227,52 @@ workflow.add_edge("tools", "chat")
 agent_graph = workflow.compile()
 
 
-# ---- Final entry point to call in your FastAPI route ----
-async def ecommerce_assistant(message: str) -> str:
-    initial_state = AgentState(messages=[HumanMessage(content=message)])
-  
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from typing import List
 
+def get_message_role(message: BaseMessage) -> str:
+    if isinstance(message, HumanMessage):
+        return "human"
+    elif isinstance(message, AIMessage):
+        return "ai"
+    elif isinstance(message, SystemMessage):
+        return "system"
+    else:
+        return "unknown"
+
+async def ecommerce_assistant(message: str, history: List[ChatMessage]) -> dict:
+    # Convert ChatMessage list into LangChain message list
+    lang_messages = []
+    for msg in history:
+        if msg.role == "human":
+            lang_messages.append(HumanMessage(content=msg.content))
+        elif msg.role == "ai":
+            lang_messages.append(AIMessage(content=msg.content))
+        elif msg.role == "system":
+            lang_messages.append(SystemMessage(content=msg.content))
+
+    # Add the current user message
+    lang_messages.append(HumanMessage(content=message))
+
+    # Run through LangGraph
+    initial_state = AgentState(messages=lang_messages)
     state = await agent_graph.ainvoke(initial_state)
-    #print("Type of input to ainvoke:", type(state))
-    #print("Messages:", state["messages"])
-    # Return the last meaningful message content
+
+    # Extract final response
     for msg in reversed(state["messages"]):
         if msg.content and msg.content.strip():
-            return msg.content
-    return "Sorry, I could not process your request."
+            print("=== MESSAGES DUMP START ===")
+            return {
+                "response": msg.content,
+                "history": [{"role": get_message_role(m), "content": m.content} for m in state["messages"]],
+
+            }
+
+    return {
+        "response": "Sorry, I could not process your request.",
+        "history": [{"role": get_message_role(m), "content": m.content} for m in state["messages"]],
+
+    }
+
+
+

@@ -1,16 +1,19 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy import insert
 from db.models.order import Order, OrderItem
 from .schema import OrderCreate
 
-def create_order(order_data: OrderCreate, db: Session):
+
+async def create_order(order_data: OrderCreate, db: AsyncSession):
     order = Order(
         user_id=order_data.user_id,
         total_amount=order_data.total_amount,
         status="pending"
     )
     db.add(order)
-    db.commit()
-    db.refresh(order)
+    await db.commit()
+    await db.refresh(order)
 
     for item in order_data.items:
         db_item = OrderItem(
@@ -20,12 +23,16 @@ def create_order(order_data: OrderCreate, db: Session):
             price=item.price
         )
         db.add(db_item)
-    db.commit()
+
+    await db.commit()
     return order
 
-def get_order_by_id(order_id: int, db: Session):
-    return db.query(Order).filter(Order.id == order_id).first()
 
-def get_orders_by_user(user_id: int, db: Session):
-    return db.query(Order).filter(Order.user_id == user_id).all()
+async def get_order_by_id(order_id: int, db: AsyncSession):
+    result = await db.execute(select(Order).where(Order.id == order_id))
+    return result.scalar_one_or_none()
 
+
+async def get_orders_by_user(user_id: int, db: AsyncSession):
+    result = await db.execute(select(Order).where(Order.user_id == user_id))
+    return result.scalars().all()
