@@ -19,13 +19,13 @@ async_session_maker = sessionmaker(
 metadata = MetaData()
 Base = declarative_base(metadata=metadata)
 
-#@asynccontextmanager
+# ✅ For FastAPI (used in Depends)
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_maker() as session:
         yield session
 
-
+# ✅ For manual usage (tool functions or services)
 @asynccontextmanager
-async def get_async_session() -> AsyncSession:
+async def get_db_session():
     async with async_session_maker() as session:
         yield session

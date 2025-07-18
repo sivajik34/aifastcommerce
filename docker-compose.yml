@@ -1,0 +1,39 @@
+services:
+  redis:
+    image: redis:7
+    container_name: redis_container
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: postgres:15
+    container_name: postgres_container
+    restart: always
+    environment:
+      POSTGRES_USER: digipin_user
+      POSTGRES_PASSWORD: digipin_pass
+      POSTGRES_DB: digipin
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  fastapi:
+    build: .
+    container_name: fastapi_app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATABASE_URL=postgresql+asyncpg://digipin_user:digipin_pass@postgres:5432/digipin
+    volumes:
+      - .:/app  # 👈 This mounts your current directory into the container
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload  # 👈 Enables auto-reload on code changes
+
+volumes:
+  postgres_data:
+

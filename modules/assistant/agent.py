@@ -7,7 +7,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
 from langchain_core.messages import ToolMessage, HumanMessage, SystemMessage, AIMessage
 
-from db.session import get_db
+from db.session import get_db_session
 from contextlib import asynccontextmanager
 
 from modules.catalog.service import get_product_by_id
@@ -16,11 +16,7 @@ from modules.checkout.service import create_order
 from modules.cart.schema import CartItemCreate
 from modules.checkout.schema import OrderCreate, OrderItemCreate
 
-# --- DB session helper ---
-@asynccontextmanager
-async def get_db_session():
-    async with get_db() as session:
-        yield session
+
 
 # --- Tool Schemas ---
 
@@ -88,8 +84,8 @@ async def place_order(user_id: int, items: List[PlaceOrderItem]):
         order = await create_order(order_data, db)
         return f"Order placed! Order ID: {order.id}, Total: {order.total_amount}"
 
-# ---- Tools List ----
-tools = [view_product, add_to_cart, place_order,done,Question]
+# ---- Tools List -----
+tools = [view_product, add_to_cart, place_order,done]
 #for t in tools:
 #    print(f"Tool type: {type(t)}, repr: {t!r}")
 
