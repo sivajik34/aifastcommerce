@@ -16,8 +16,6 @@ from modules.checkout.service import create_order
 from modules.cart.schema import CartItemCreate
 from modules.checkout.schema import OrderCreate, OrderItemCreate
 
-
-
 # --- Tool Schemas ---
 
 class ViewProductInput(BaseModel):
@@ -38,16 +36,17 @@ class PlaceOrderInput(BaseModel):
     items: List[PlaceOrderItem]
 
 # --- Tool Functions ---
-@tool(return_direct=True)
+@tool
 async def done():
     """Signal that the agent is done with all tool calls."""
-    return "Done"
-@tool
-class Question(BaseModel):
-      """Question to ask user."""
-      content: str
+    return "Task completed successfully."
 
-@tool(args_schema=ViewProductInput, return_direct=True)
+@tool
+def ask_question(content: str):
+    """Ask a question to the user."""
+    return f"Question: {content}"
+
+@tool(args_schema=ViewProductInput)
 async def view_product(product_id: int):
     """View product details including name, price, and stock by product_id."""
     async with get_db_session() as db:
@@ -61,7 +60,7 @@ async def view_product(product_id: int):
             }
         return "Product not found."
 
-@tool(args_schema=AddToCartInput, return_direct=True)
+@tool(args_schema=AddToCartInput)
 async def add_to_cart(user_id: int, product_id: int, quantity: int):
     """Add a product to a user's cart using user_id, product_id, and quantity."""
     async with get_db_session() as db:
@@ -73,7 +72,7 @@ async def add_to_cart(user_id: int, product_id: int, quantity: int):
         result = await svc_add_to_cart(item, db)
         return f"Added to cart: Product {result.product_id} x {result.quantity}"
 
-@tool(args_schema=PlaceOrderInput, return_direct=True)
+@tool(args_schema=PlaceOrderInput)
 async def place_order(user_id: int, items: List[PlaceOrderItem]):
     """Place an order for a user with a list of items including product_id, quantity, and price."""
     total = sum(item.quantity * item.price for item in items)
@@ -85,10 +84,7 @@ async def place_order(user_id: int, items: List[PlaceOrderItem]):
         return f"Order placed! Order ID: {order.id}, Total: {order.total_amount}"
 
 # ---- Tools List -----
-tools = [view_product, add_to_cart, place_order,done]
-#for t in tools:
-#    print(f"Tool type: {type(t)}, repr: {t!r}")
-
+tools = [view_product, add_to_cart, place_order, done, ask_question]
 tools_by_name = {tool.name: tool for tool in tools}
 
 # ---- Router Schema ----
@@ -103,7 +99,7 @@ class AgentState(MessagesState):
 
 # ---- LLM Setup ----
 llm = ChatOpenAI(temperature=0, model="gpt-4o-mini", streaming=True)
-llm_with_tools = llm.bind_tools(tools, tool_choice="any",parallel_tool_calls=False)
+llm_with_tools = llm.bind_tools(tools, tool_choice="auto", parallel_tool_calls=False)
 llm_router = llm.with_structured_output(RouterSchema)
 
 triage_user_prompt = "this is user input {user_input}"
@@ -145,11 +141,12 @@ def llm_call(state: AgentState):
 You are an ecommerce assistant. You can call these tools:
 
 - view_product: Get product details by product_id.
-- add_to_cart_tool: Add a product to a user's cart using user_id, product_id, and quantity.
+- add_to_cart: Add a product to a user's cart using user_id, product_id, and quantity.
 - place_order: Place an order for a user with a list of items (product_id, quantity, price).
-- Done: Call this tool with no arguments when you have completed the user's request and no further tool calls are needed.
+- ask_question: Ask a question to the user if you need more information.
+- done: Call this tool when you have completed the user's request and no further tool calls are needed.
 
-Always call exactly one tool per turn if needed. When finished, call the Done tool.
+Always call exactly one tool per turn if needed. When you have fully completed the user's request, call the done tool.
 """
 
     response = llm_with_tools.invoke(
@@ -160,12 +157,17 @@ Always call exactly one tool per turn if needed. When finished, call the Done to
     )
     return {"messages": state["messages"] + [response]}
 
-
 import traceback
 
 async def tool_handler(state: AgentState):
     print("calling tool handler")
     last_message = state["messages"][-1]
+    
+    # Ensure we have an AIMessage with tool_calls
+    if not hasattr(last_message, 'tool_calls') or not last_message.tool_calls:
+        print("No tool calls found in last message")
+        return {"messages": state["messages"]}
+    
     tool_messages = []
 
     for idx, tool_call in enumerate(last_message.tool_calls):
@@ -187,8 +189,24 @@ async def tool_handler(state: AgentState):
             print(f"Parsed tool_id: {tool_id}")
 
             # Lookup and call tool
+            if tool_name not in tools_by_name:
+                error_msg = f"Tool '{tool_name}' not found"
+                print(f"❌ {error_msg}")
+                tool_messages.append(
+                    ToolMessage(
+                        tool_call_id=tool_id or f"unknown-{idx}",
+                        content=error_msg
+                    )
+                )
+                continue
+
             tool = tools_by_name[tool_name]
             result = await tool.ainvoke(tool_args)
+            
+            # Convert result to string if it's not already
+            if not isinstance(result, str):
+                result = str(result)
+                
             tool_messages.append(ToolMessage(tool_call_id=tool_id, content=result))
 
         except Exception as e:
@@ -203,27 +221,46 @@ async def tool_handler(state: AgentState):
 
     return {"messages": state["messages"] + tool_messages}
 
-
 def should_continue(state: AgentState) -> Literal["tool_handler", "__end__"]:
     last_message = state["messages"][-1]
+    
+    # Check if it's an AIMessage with tool_calls
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+        # Check if any of the tool calls is "done"
         for tool_call in last_message.tool_calls:
-            # Safe access for 'name'
             tool_name = getattr(tool_call, "name", None)
             if tool_name is None and isinstance(tool_call, dict):
                 tool_name = tool_call.get("name")
             if tool_name == "done":
-                return "__end__"
-        return "tool_handler"
+                return "tool_handler"  # Execute the done tool, then end
+        return "tool_handler"  # Execute other tools
+    
+    # Check if the last message is a ToolMessage from the "done" tool
+    if isinstance(last_message, ToolMessage):
+        # Look for the corresponding AIMessage with tool_calls
+        for i in range(len(state["messages"]) - 1, -1, -1):
+            msg = state["messages"][i]
+            if hasattr(msg, "tool_calls") and msg.tool_calls:
+                for tool_call in msg.tool_calls:
+                    tool_name = getattr(tool_call, "name", None)
+                    if tool_name is None and isinstance(tool_call, dict):
+                        tool_name = tool_call.get("name")
+                    if tool_name == "done" and getattr(tool_call, "id", tool_call.get("id")) == last_message.tool_call_id:
+                        return "__end__"
+                break
+    
     return "__end__"
-
 
 # ---- Response Agent Workflow ----
 agent_workflow = StateGraph(AgentState)
 agent_workflow.add_node("llm_call", llm_call)
 agent_workflow.add_node("tool_handler", tool_handler)
 agent_workflow.set_entry_point("llm_call")
-agent_workflow.add_conditional_edges("llm_call", should_continue, {"tool_handler": "tool_handler", "__end__": END})
+agent_workflow.add_conditional_edges(
+    "llm_call", 
+    should_continue, 
+    {"tool_handler": "tool_handler", "__end__": END}
+)
 agent_workflow.add_edge("tool_handler", "llm_call")
 response_agent = agent_workflow.compile()
 
@@ -234,9 +271,9 @@ overall_workflow = (
     .add_node("response_agent", response_agent)
     .set_entry_point("triage_router")
     .add_conditional_edges(
-    "triage_router",
-    lambda state: "response_agent" if state.get("classification_decision") == "respond" else END,
-    {"response_agent": "response_agent", END: END}
-)
+        "triage_router",
+        lambda state: "response_agent" if state.get("classification_decision") == "respond" else END,
+        {"response_agent": "response_agent", END: END}
+    )
     .compile()
 )
