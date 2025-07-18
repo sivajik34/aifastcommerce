@@ -46,6 +46,10 @@ class PlaceOrderInput(BaseModel):
 async def done():
     """Signal that the agent is done with all tool calls."""
     return "Done"
+@tool
+class Question(BaseModel):
+      """Question to ask user."""
+      content: str
 
 @tool(args_schema=ViewProductInput, return_direct=True)
 async def view_product(product_id: int):
@@ -85,7 +89,7 @@ async def place_order(user_id: int, items: List[PlaceOrderItem]):
         return f"Order placed! Order ID: {order.id}, Total: {order.total_amount}"
 
 # ---- Tools List ----
-tools = [view_product, add_to_cart, place_order,done]
+tools = [view_product, add_to_cart, place_order,done,Question]
 #for t in tools:
 #    print(f"Tool type: {type(t)}, repr: {t!r}")
 
@@ -98,11 +102,12 @@ class RouterSchema(BaseModel):
 
 class AgentState(MessagesState):
     user_input: str
+    user_id: str
     classification_decision: Literal["ignore", "respond"]
 
 # ---- LLM Setup ----
 llm = ChatOpenAI(temperature=0, model="gpt-4o-mini", streaming=True)
-llm_with_tools = llm.bind_tools(tools, tool_choice="any")
+llm_with_tools = llm.bind_tools(tools, tool_choice="any",parallel_tool_calls=False)
 llm_router = llm.with_structured_output(RouterSchema)
 
 triage_user_prompt = "this is user input {user_input}"
@@ -232,6 +237,10 @@ overall_workflow = (
     .add_node("triage_router", triage_router)
     .add_node("response_agent", response_agent)
     .set_entry_point("triage_router")
-    .add_edge("triage_router", "response_agent")
+    .add_conditional_edges(
+    "triage_router",
+    lambda state: "response_agent" if state.get("classification_decision") == "respond" else END,
+    {"response_agent": "response_agent", END: END}
+)
     .compile()
 )

@@ -4,6 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from contextlib import asynccontextmanager
 from config import DATABASE_URL
+from typing import AsyncGenerator
+
 
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL is not set in the environment.")
@@ -17,10 +19,11 @@ async_session_maker = sessionmaker(
 metadata = MetaData()
 Base = declarative_base(metadata=metadata)
 
-@asynccontextmanager
-async def get_db() -> AsyncSession:
+#@asynccontextmanager
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_maker() as session:
         yield session
+
 
 @asynccontextmanager
 async def get_async_session() -> AsyncSession:

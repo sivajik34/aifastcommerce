@@ -1,0 +1,11 @@
+watch:
+  fastapi:
+    paths:
+      - path: .
+        target: /app
+        action: sync
+        ignore:
+          - __pycache__
+          - .venv
+          - "*.pyc"
+          - "*.log"
