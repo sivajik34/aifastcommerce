@@ -1,86 +1,59 @@
-import json
-from fastapi import APIRouter,HTTPException
+"""
+FastAPI routes for the assistant module
+"""
+import traceback
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
-from modules.assistant.schema import ChatRequest
-from modules.assistant.agent import overall_workflow
-from shared.redisclient import redis_client  
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage
+
+from .schema import ChatRequest, ChatResponse
+from .agent import overall_workflow
+from .chat_history import chat_history_manager
+
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
 
-def serialize_message(msg):
-    """Convert LangChain message to JSON-serializable format"""
-    base = {
-        "role": msg.type,
-        "content": msg.content
-    }
-    
-    if isinstance(msg, ToolMessage):
-        base["tool_call_id"] = msg.tool_call_id
-        base["role"] = "tool"
-    elif isinstance(msg, AIMessage):
-        base["role"] = "ai"
-        if hasattr(msg, 'tool_calls') and msg.tool_calls:
-            base["tool_calls"] = [
-                {
-                    "id": tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", None),
-                    "name": tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", None),
-                    "args": tc.get("args") if isinstance(tc, dict) else getattr(tc, "arguments", {})
-                }
-                for tc in msg.tool_calls
-            ]
-    elif isinstance(msg, HumanMessage):
-        base["role"] = "human"
-    elif isinstance(msg, SystemMessage):
-        base["role"] = "system"
-    
-    return base
 
-def deserialize_message(msg_dict):
-    """Convert JSON message back to LangChain message"""
-    role = msg_dict.get("role")
-    content = msg_dict.get("content", "")
-    
-    if role == "human":
-        return HumanMessage(content=content)
-    elif role == "ai":
-        ai_msg = AIMessage(content=content)
-        if "tool_calls" in msg_dict:
-            ai_msg.tool_calls = msg_dict["tool_calls"]
-        return ai_msg
-    elif role == "tool":
-        return ToolMessage(
-            tool_call_id=msg_dict.get("tool_call_id", "unknown"),
-            content=content
-        )
-    elif role == "system":
-        return SystemMessage(content=content)
-    else:
-        return HumanMessage(content=content)  # fallback
+def extract_response_text(messages) -> str:
+    """Extract the most recent AI response from the message history."""
+    for msg in reversed(messages):
+        if isinstance(msg, AIMessage) and msg.content.strip():
+            return msg.content.strip()
+    return "I'm here to help! Please let me know what you'd like to do."
 
-@router.post("/chat")
+
+def extract_products_from_messages(messages) -> list:
+    """Extract product information mentioned in the conversation."""
+    products = []
+    # This could be enhanced to parse tool results and extract product data
+    # For now, returning empty list - can be implemented based on specific needs
+    return products
+
+
+@router.post("/chat", response_model=ChatResponse)
 async def chat_with_agent(request: ChatRequest):
+    """
+    Main chat endpoint for the ecommerce assistant.
+    
+    Processes user messages, maintains conversation history in PostgreSQL,
+    and returns AI responses with context.
+    """
     try:
         user_id = request.user_id
         if not user_id:
             raise HTTPException(status_code=400, detail="user_id is required")
-            
-        redis_key = f"chat:{user_id}:history"
-
-        # Load chat history from Redis
-        history_json = redis_client.get(redis_key)
-        previous_messages = []
         
-        if history_json:
-            try:
-                history_data = json.loads(history_json)
-                previous_messages = [deserialize_message(msg) for msg in history_data]
-            except (json.JSONDecodeError, KeyError) as e:
-                print(f"Error loading chat history: {e}")
-                # Reset history if corrupted
-                redis_client.delete(redis_key)
+        print(f"💬 Processing chat for user {user_id}: {request.message[:50]}...")
 
-        # Create initial state with existing messages
+        # Load existing chat history from PostgreSQL
+        previous_messages = await chat_history_manager.get_recent_messages(
+            str(user_id), 
+            limit=20  # Keep last 20 messages for context
+        )
+        
+        print(f"📚 Loaded {len(previous_messages)} previous messages")
+
+        # Create initial state with existing conversation history
         state = {
             "user_input": request.message,
             "user_id": str(user_id),
@@ -88,40 +61,103 @@ async def chat_with_agent(request: ChatRequest):
             "messages": previous_messages
         }
 
-        # Run workflow
+        # Run the agent workflow
+        print("🚀 Starting agent workflow...")
         result = await overall_workflow.ainvoke(state)
-
-        # Extract updated messages
+        
+        # Extract the new messages that were added during this interaction
         updated_messages = result.get("messages", [])
+        new_messages = updated_messages[len(previous_messages):]
         
-        # Get the last AI message content for response
-        response_text = ""
-        for msg in reversed(updated_messages):
-            if isinstance(msg, AIMessage) and msg.content.strip():
-                response_text = msg.content
-                break
+        print(f"📤 Generated {len(new_messages)} new messages")
+
+        # Save new messages to PostgreSQL
+        if new_messages:
+            await chat_history_manager.add_messages(str(user_id), new_messages)
+            print("💾 Saved new messages to database")
+
+        # Extract response for the user
+        response_text = extract_response_text(updated_messages)
         
-        if not response_text:
-            response_text = "I'm here to help! Please let me know what you'd like to do."
+        # Extract any product information (for frontend integration)
+        products = extract_products_from_messages(updated_messages)
 
-        # Serialize and save updated history to Redis
-        serialized_history = [serialize_message(msg) for msg in updated_messages]
-        redis_client.set(redis_key, json.dumps(serialized_history), ex=3600)
+        print(f"✅ Response ready: {response_text[:50]}...")
 
-        return {
-            "response": response_text,
-            "history": serialized_history,
-            "products": []  # Add product extraction logic if needed
-        }
+        return ChatResponse(
+            response=response_text,
+            products=products,
+            message_count=len(updated_messages)
+        )
 
     except HTTPException:
+        # Re-raise HTTP exceptions as-is
         raise
     except Exception as e:
-        print(f"Chat error: {e}")
-        import traceback
+        error_msg = f"Internal server error: {str(e)}"
+        print(f"❌ Chat error: {error_msg}")
         traceback.print_exc()
         
         return JSONResponse(
             status_code=500,
-            content={"error": f"Internal server error: {str(e)}"}
+            content={
+                "error": error_msg,
+                "response": "I apologize, but I'm experiencing technical difficulties. Please try again.",
+                "products": [],
+                "message_count": 0
+            }
+        )
+
+
+@router.delete("/chat/{user_id}")
+async def clear_chat_history(user_id: str):
+    """
+    Clear chat history for a specific user.
+    
+    Useful for testing or when users want to start fresh conversations.
+    """
+    try:
+        await chat_history_manager.clear_session(user_id)
+        print(f"🗑️ Cleared chat history for user {user_id}")
+        
+        return {"message": f"Chat history cleared for user {user_id}"}
+    
+    except Exception as e:
+        print(f"❌ Error clearing chat history: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to clear chat history: {str(e)}"
+        )
+
+
+@router.get("/chat/{user_id}/history")
+async def get_chat_history(user_id: str, limit: int = 50):
+    """
+    Retrieve chat history for a specific user.
+    
+    Useful for debugging or providing conversation context to other services.
+    """
+    try:
+        messages = await chat_history_manager.get_recent_messages(user_id, limit)
+        
+        # Convert messages to a serializable format
+        history = []
+        for msg in messages:
+            history.append({
+                "type": msg.type,
+                "content": msg.content,
+                "timestamp": getattr(msg, 'timestamp', None)
+            })
+        
+        return {
+            "user_id": user_id,
+            "message_count": len(history),
+            "messages": history
+        }
+    
+    except Exception as e:
+        print(f"❌ Error retrieving chat history: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve chat history: {str(e)}"
         )

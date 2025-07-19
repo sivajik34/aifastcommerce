@@ -1,122 +1,45 @@
-from typing import List, Literal
-from pydantic import BaseModel, Field
+"""
+Main agent workflow for the ecommerce assistant
+"""
+import traceback
+from typing import Literal
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command
-from langgraph.graph import MessagesState
 from langchain_openai import ChatOpenAI
-from langchain_core.tools import tool
 from langchain_core.messages import ToolMessage, HumanMessage, SystemMessage, AIMessage
 
-from db.session import get_db_session
-from contextlib import asynccontextmanager
+from .state import AgentState, RouterSchema
+from .tools import tools, tools_by_name
+from .prompts import (
+    TRIAGE_SYSTEM_PROMPT, 
+    TRIAGE_USER_PROMPT,
+    ASSISTANT_SYSTEM_PROMPT
+)
 
-from modules.catalog.service import get_product_by_id
-from modules.cart.service import add_to_cart as svc_add_to_cart
-from modules.checkout.service import create_order
-from modules.cart.schema import CartItemCreate
-from modules.checkout.schema import OrderCreate, OrderItemCreate
-
-# --- Tool Schemas ---
-
-class ViewProductInput(BaseModel):
-    product_id: int
-
-class AddToCartInput(BaseModel):
-    user_id: int
-    product_id: int
-    quantity: int
-
-class PlaceOrderItem(BaseModel):
-    product_id: int
-    quantity: int
-    price: float
-
-class PlaceOrderInput(BaseModel):
-    user_id: int
-    items: List[PlaceOrderItem]
-
-# --- Tool Functions ---
-@tool
-async def done():
-    """Signal that the agent is done with all tool calls."""
-    return "Task completed successfully."
-
-@tool
-def ask_question(content: str):
-    """Ask a question to the user."""
-    return f"Question: {content}"
-
-@tool(args_schema=ViewProductInput)
-async def view_product(product_id: int):
-    """View product details including name, price, and stock by product_id."""
-    async with get_db_session() as db:
-        product = await get_product_by_id(product_id, db)
-        print("calling product")
-        if product:
-            return {
-                "name": product.name,
-                "price": float(product.price),
-                "stock": product.stock
-            }
-        return "Product not found."
-
-@tool(args_schema=AddToCartInput)
-async def add_to_cart(user_id: int, product_id: int, quantity: int):
-    """Add a product to a user's cart using user_id, product_id, and quantity."""
-    async with get_db_session() as db:
-        item = CartItemCreate(
-            user_id=user_id,
-            product_id=product_id,
-            quantity=quantity
-        )
-        result = await svc_add_to_cart(item, db)
-        return f"Added to cart: Product {result.product_id} x {result.quantity}"
-
-@tool(args_schema=PlaceOrderInput)
-async def place_order(user_id: int, items: List[PlaceOrderItem]):
-    """Place an order for a user with a list of items including product_id, quantity, and price."""
-    total = sum(item.quantity * item.price for item in items)
-    order_items = [OrderItemCreate(**item.dict()) for item in items]
-    order_data = OrderCreate(user_id=user_id, total_amount=total, items=order_items)
-
-    async with get_db_session() as db:
-        order = await create_order(order_data, db)
-        return f"Order placed! Order ID: {order.id}, Total: {order.total_amount}"
-
-# ---- Tools List -----
-tools = [view_product, add_to_cart, place_order, done, ask_question]
-tools_by_name = {tool.name: tool for tool in tools}
-
-# ---- Router Schema ----
-class RouterSchema(BaseModel):
-    reasoning: str = Field(description="Step-by-step reasoning behind the classification.")
-    classification: Literal["ignore", "respond"] = Field(description="The classification of the user input.")
-
-class AgentState(MessagesState):
-    user_input: str
-    user_id: str
-    classification_decision: Literal["ignore", "respond"]
 
 # ---- LLM Setup ----
 llm = ChatOpenAI(temperature=0, model="gpt-4o-mini", streaming=True)
 llm_with_tools = llm.bind_tools(tools, tool_choice="auto", parallel_tool_calls=False)
 llm_router = llm.with_structured_output(RouterSchema)
 
-triage_user_prompt = "this is user input {user_input}"
-triage_system_prompt = "you are ecommerce assistant"
 
-# ---- Triage Router ----
 def triage_router(state: AgentState) -> Command:
+    """
+    Route user input based on whether it should be handled or ignored.
+    
+    This node classifies the user input and decides whether to proceed
+    with the response agent or end the conversation.
+    """
     user_msg = state["user_input"]
-    user_prompt = triage_user_prompt.format(user_input=user_msg)
+    user_prompt = TRIAGE_USER_PROMPT.format(user_input=user_msg)
 
     result = llm_router.invoke([
-        {"role": "system", "content": triage_system_prompt},
+        {"role": "system", "content": TRIAGE_SYSTEM_PROMPT},
         {"role": "user", "content": user_prompt},
     ])
 
     if result.classification == "respond":
-        print("📧 Classification: respond")
+        print(f"📧 Classification: respond - {result.reasoning}")
         return Command(
             goto="response_agent",
             update={
@@ -125,7 +48,7 @@ def triage_router(state: AgentState) -> Command:
             },
         )
     elif result.classification == "ignore":
-        print("🚫 Classification: ignore")
+        print(f"🚫 Classification: ignore - {result.reasoning}")
         return Command(
             goto=END,
             update={"classification_decision": result.classification},
@@ -133,50 +56,53 @@ def triage_router(state: AgentState) -> Command:
     else:
         raise ValueError(f"Invalid classification: {result.classification}")    
 
-# ---- Agent Reasoning LLM Node ----
+
 def llm_call(state: AgentState):
-    print("llm_call is calling")
-
-    system_prompt = """
-You are an ecommerce assistant. You can call these tools:
-
-- view_product: Get product details by product_id.
-- add_to_cart: Add a product to a user's cart using user_id, product_id, and quantity.
-- place_order: Place an order for a user with a list of items (product_id, quantity, price).
-- ask_question: Ask a question to the user if you need more information.
-- done: Call this tool when you have completed the user's request and no further tool calls are needed.
-
-Always call exactly one tool per turn if needed. When you have fully completed the user's request, call the done tool.
-"""
+    """
+    Main LLM reasoning node that decides what tool to call next.
+    
+    This node processes the conversation history and determines
+    the appropriate tool to use based on the user's request.
+    """
+    print("🧠 LLM reasoning and tool selection...")
 
     response = llm_with_tools.invoke(
         [
-            SystemMessage(content=system_prompt),
+            SystemMessage(content=ASSISTANT_SYSTEM_PROMPT),
             *state["messages"]
         ]
     )
+    
+    # Log what tool was selected
+    if hasattr(response, 'tool_calls') and response.tool_calls:
+        tool_names = [tc.get("name") or getattr(tc, "name", "unknown") for tc in response.tool_calls]
+        print(f"🔧 Selected tools: {tool_names}")
+    
     return {"messages": state["messages"] + [response]}
 
-import traceback
 
 async def tool_handler(state: AgentState):
-    print("calling tool handler")
+    """
+    Execute the tools requested by the LLM.
+    
+    This node handles the actual execution of tools and manages
+    any errors that might occur during tool execution.
+    """
+    print("⚙️ Executing tools...")
     last_message = state["messages"][-1]
     
     # Ensure we have an AIMessage with tool_calls
     if not hasattr(last_message, 'tool_calls') or not last_message.tool_calls:
-        print("No tool calls found in last message")
+        print("⚠️ No tool calls found in last message")
         return {"messages": state["messages"]}
     
     tool_messages = []
 
     for idx, tool_call in enumerate(last_message.tool_calls):
         try:
-            print(f"\n--- Tool Call [{idx}] ---")
-            print(f"type: {type(tool_call)}")
-            print(f"tool_call raw: {tool_call}")
+            print(f"\n--- Executing Tool [{idx + 1}] ---")
 
-            # Safe access to name, arguments, id (supporting both object and dict)
+            # Safe access to tool call properties
             tool_name = getattr(tool_call, "name", tool_call.get("name"))
             tool_args = getattr(tool_call, "arguments", None)
             if tool_args is None and isinstance(tool_call, dict):
@@ -184,11 +110,10 @@ async def tool_handler(state: AgentState):
 
             tool_id = getattr(tool_call, "id", tool_call.get("id"))
 
-            print(f"Parsed tool_name: {tool_name}")
-            print(f"Parsed tool_args: {tool_args}")
-            print(f"Parsed tool_id: {tool_id}")
+            print(f"🔧 Tool: {tool_name}")
+            print(f"📝 Args: {tool_args}")
 
-            # Lookup and call tool
+            # Validate tool exists
             if tool_name not in tools_by_name:
                 error_msg = f"Tool '{tool_name}' not found"
                 print(f"❌ {error_msg}")
@@ -200,28 +125,39 @@ async def tool_handler(state: AgentState):
                 )
                 continue
 
+            # Execute tool
             tool = tools_by_name[tool_name]
             result = await tool.ainvoke(tool_args)
             
-            # Convert result to string if it's not already
+            # Convert result to string if needed
             if not isinstance(result, str):
                 result = str(result)
                 
+            print(f"✅ Result: {result[:100]}{'...' if len(result) > 100 else ''}")
+            
             tool_messages.append(ToolMessage(tool_call_id=tool_id, content=result))
 
         except Exception as e:
-            print(f"❌ Error during tool_call [{idx}]: {e}")
+            error_msg = f"Tool execution failed: {str(e)}"
+            print(f"❌ Error during tool_call [{idx + 1}]: {error_msg}")
             traceback.print_exc()
             tool_messages.append(
                 ToolMessage(
                     tool_call_id=tool_id or f"unknown-{idx}",
-                    content=f"Tool error: {str(e)}"
+                    content=error_msg
                 )
             )
 
     return {"messages": state["messages"] + tool_messages}
 
+
 def should_continue(state: AgentState) -> Literal["tool_handler", "__end__"]:
+    """
+    Determine whether to continue with tool execution or end the workflow.
+    
+    The workflow continues if there are tools to execute, and ends when
+    the 'done' tool has been executed or no more tools are needed.
+    """
     last_message = state["messages"][-1]
     
     # Check if it's an AIMessage with tool_calls
@@ -232,6 +168,7 @@ def should_continue(state: AgentState) -> Literal["tool_handler", "__end__"]:
             if tool_name is None and isinstance(tool_call, dict):
                 tool_name = tool_call.get("name")
             if tool_name == "done":
+                print("🏁 Done tool detected - will end after execution")
                 return "tool_handler"  # Execute the done tool, then end
         return "tool_handler"  # Execute other tools
     
@@ -246,10 +183,12 @@ def should_continue(state: AgentState) -> Literal["tool_handler", "__end__"]:
                     if tool_name is None and isinstance(tool_call, dict):
                         tool_name = tool_call.get("name")
                     if tool_name == "done" and getattr(tool_call, "id", tool_call.get("id")) == last_message.tool_call_id:
+                        print("🏁 Workflow complete - ending")
                         return "__end__"
                 break
     
     return "__end__"
+
 
 # ---- Response Agent Workflow ----
 agent_workflow = StateGraph(AgentState)

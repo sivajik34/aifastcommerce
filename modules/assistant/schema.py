@@ -1,19 +1,56 @@
-# modules/assistant/schema.py
+"""
+Pydantic schemas for the assistant API
+"""
+from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
-from typing import Optional,List,Dict,Any
 
-class ChatHistoryMessage(BaseModel):
-    role: str = Field(..., description="Role of the message sender")
-    content: str = Field(..., description="Content of the message")
-    tool_call_id: Optional[str] = Field(None, description="Tool call ID for tool messages")
-    tool_calls: Optional[List[Dict[str, Any]]] = Field(None, description="Tool calls for AI messages")
 
 class ChatRequest(BaseModel):
-    message: str = Field(..., description="The user's message")
-    user_id: str = Field(..., description="User ID for maintaining chat history")
-    history: Optional[List[ChatHistoryMessage]] = Field(default=[], description="Previous chat history")
+    """Request schema for chat interactions."""
+    user_id: str = Field(..., description="Unique identifier for the user")
+    message: str = Field(..., min_length=1, description="User's message to the assistant")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "user_id": "user_123",
+                "message": "Show me product 456"
+            }
+        }
+
+
+class ProductInfo(BaseModel):
+    """Schema for product information in chat responses."""
+    product_id: int
+    name: str
+    price: float
+    stock: int
+    status: str = Field(description="Product availability status")
+
 
 class ChatResponse(BaseModel):
-    response: str = Field(..., description="The assistant's response")
-    history: List[ChatHistoryMessage] = Field(..., description="Updated chat history")
-    products: Optional[List[Dict[str, Any]]] = Field(default=[], description="Product recommendations")
+    """Response schema for chat interactions."""
+    response: str = Field(..., description="Assistant's response to the user")
+    products: List[ProductInfo] = Field(
+        default_factory=list, 
+        description="List of products mentioned in the conversation"
+    )
+    message_count: int = Field(
+        default=0, 
+        description="Total number of messages in the conversation"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "response": "I found the product you're looking for! It's currently in stock.",
+                "products": [
+                    {
+                        "product_id": 456,
+                        "name": "Wireless Headphones",
+                        "price":2500,
+                        "stock":20,
+                        "status":"in stock"
+                    }]
+            }
+        }
