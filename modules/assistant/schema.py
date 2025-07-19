@@ -13,8 +13,8 @@ class ChatRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "user_id": "user_123",
-                "message": "Show me product 456"
+                "user_id": "4e4e90b8-3bde-4e7c-89c4-cb6210c4d9f7",
+                "message": "Show me product id 1"
             }
         }
 

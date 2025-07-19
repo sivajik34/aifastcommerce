@@ -27,12 +27,7 @@ class ChatHistoryManager:
         Returns:
             PostgresChatMessageHistory instance for the session
         """
-        return PostgresChatMessageHistory("chat_message_history",session_id,
-    sync_connection=self.sync_connection
-    
-    
-)
-
+        return PostgresChatMessageHistory("chat_message_history", session_id, sync_connection=self.sync_connection)
     
     async def get_messages(self, session_id: str) -> List[BaseMessage]:
         """

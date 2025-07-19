@@ -1,10 +1,4 @@
 services:
-  redis:
-    image: redis:7
-    container_name: redis_container
-    ports:
-      - "6379:6379"
-
   postgres:
     image: postgres:15
     container_name: postgres_container
@@ -23,12 +17,9 @@ services:
     container_name: fastapi_app
     ports:
       - "8000:8000"
-    depends_on:
-      - redis
+    depends_on:      
       - postgres
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+    environment:      
       - DATABASE_URL=postgresql+asyncpg://digipin_user:digipin_pass@postgres:5432/digipin
     volumes:
       - .:/app  # 👈 This mounts your current directory into the container

@@ -5,7 +5,6 @@ import traceback
 from typing import Literal
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import ToolMessage, HumanMessage, SystemMessage, AIMessage
 
 from .state import AgentState, RouterSchema
@@ -15,10 +14,11 @@ from .prompts import (
     TRIAGE_USER_PROMPT,
     ASSISTANT_SYSTEM_PROMPT
 )
-
+from modules.llm.factory import get_llm_strategy
 
 # ---- LLM Setup ----
-llm = ChatOpenAI(temperature=0, model="gpt-4o-mini", streaming=True)
+strategy = get_llm_strategy("openai", "")
+llm = strategy.initialize()
 llm_with_tools = llm.bind_tools(tools, tool_choice="auto", parallel_tool_calls=False)
 llm_router = llm.with_structured_output(RouterSchema)
 
