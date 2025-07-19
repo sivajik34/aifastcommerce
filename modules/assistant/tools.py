@@ -1,9 +1,9 @@
-from typing import List
-from pydantic import BaseModel
+from typing import List, Optional, Dict, Any
+from pydantic import BaseModel,Field
 from langchain_core.tools import tool
 
 from db.session import get_db_session
-from modules.catalog.service import get_product_by_id
+from modules.catalog.service import get_product_by_id,search_catalog_products
 from modules.cart.service import add_to_cart as svc_add_to_cart
 from modules.checkout.service import create_order
 from modules.cart.schema import CartItemCreate
@@ -13,6 +13,14 @@ from modules.checkout.schema import OrderCreate, OrderItemCreate
 # --- Tool Input Schemas ---
 class ViewProductInput(BaseModel):
     product_id: int
+
+class SearchProductsInput(BaseModel):
+    query: str = Field(description="Search query for products")
+    category_id: Optional[int] = Field(default=None, description="Filter by category")
+    min_price: Optional[float] = Field(default=None, description="Minimum price filter")
+    max_price: Optional[float] = Field(default=None, description="Maximum price filter")
+    sort_by: Optional[str] = Field(default="relevance", description="Sort by: relevance, price_asc, price_desc, rating, newest")
+    limit: Optional[int] = Field(default=10, description="Maximum number of results")
 
 
 class AddToCartInput(BaseModel):
@@ -80,6 +88,43 @@ async def view_product(product_id: int):
                 "status": "available" if product.stock > 0 else "out_of_stock"
             }
         return {"error": f"Product with ID {product_id} not found"}
+
+@tool(args_schema=SearchProductsInput)
+async def search_products(
+    query: str,
+    category_id: Optional[int] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None,
+    sort_by: Optional[str] = "relevance",
+    limit: Optional[int] = 10
+):
+    """Search for products based on query and filters.
+    
+    Perfect for when users ask to find products, search for items,
+    or browse products with specific criteria.
+    """
+    async with get_db_session() as db:
+        products = await search_catalog_products(
+            db, query, category_id, min_price, max_price, sort_by, limit
+        )
+        if not products:
+            return {"message": f"No products found for '{query}'", "products": []}
+        
+        return {
+            "message": f"Found {len(products)} products for '{query}'",
+            "products": [
+                {
+                    "product_id": p.id,
+                    "name": p.name,
+                    "price": float(p.price),
+                    "stock": p.stock,
+                    "category": p.category.name if p.category else "Uncategorized",
+                    "rating": float(p.average_rating or 0),
+                    "review_count": p.review_count or 0
+                }
+                for p in products
+            ]
+        }    
 
 
 @tool(args_schema=AddToCartInput)
@@ -157,5 +202,5 @@ async def place_order(user_id: int, items: List[PlaceOrderItem]):
 
 
 # Export tools list
-tools = [view_product, add_to_cart, place_order, ask_question, done]
+tools = [view_product, add_to_cart, place_order,search_products, ask_question, done]
 tools_by_name = {tool.name: tool for tool in tools}

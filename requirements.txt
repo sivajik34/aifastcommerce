@@ -18,6 +18,8 @@ colorama==0.4.6
 dataclasses-json==0.6.7
 Deprecated==1.2.18
 distro==1.9.0
+dnspython==2.7.0
+email_validator==2.2.0
 fastapi==0.115.13
 frozenlist==1.7.0
 gitdb==4.0.12

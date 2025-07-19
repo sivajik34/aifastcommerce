@@ -1,0 +1,124 @@
+"""
+Enhanced agent workflow for the ecommerce assistant with advanced features
+"""
+import traceback
+from typing import Literal, Optional, Dict, Any
+from langgraph.graph import StateGraph, START, END
+from langgraph.types import Command
+from langchain_core.messages import ToolMessage, HumanMessage, SystemMessage, AIMessage
+
+from .state import AgentState, RouterSchema, IntentSchema
+from .tools import tools, tools_by_name
+from .prompts import (
+    TRIAGE_SYSTEM_PROMPT, 
+    TRIAGE_USER_PROMPT,
+    ASSISTANT_SYSTEM_PROMPT,
+    INTENT_CLASSIFICATION_PROMPT,
+    CONTEXT_ENRICHMENT_PROMPT
+)
+from modules.llm.factory import get_llm_strategy
+from modules.analytics.service import log_user_interaction
+from modules.user.service import get_user_context
+
+# ---- LLM Setup ----
+strategy = get_llm_strategy("openai", "")
+llm = strategy.initialize()
+llm_with_tools = llm.bind_tools(tools, tool_choice="auto", parallel_tool_calls=False)
+llm_router = llm.with_structured_output(RouterSchema)
+llm_intent = llm.with_structured_output(IntentSchema)
+
+
+def triage_router(state: AgentState) -> Command:
+    """
+    Enhanced router that classifies user input and determines conversation flow.
+    """
+    user_msg = state["user_input"]
+    user_prompt = TRIAGE_USER_PROMPT.format(user_input=user_msg)
+
+    result = llm_router.invoke([
+        {"role": "system", "content": TRIAGE_SYSTEM_PROMPT},
+        {"role": "user", "content": user_prompt},
+    ])
+
+    print(f"📧 Classification: {result.classification} - {result.reasoning}")
+
+    if result.classification == "respond":
+        return Command(
+            goto="intent_classifier",
+            update={
+                "messages": [HumanMessage(content=user_msg)],
+                "classification_decision": result.classification,
+                "classification_reasoning": result.reasoning,
+            },
+        )
+    elif result.classification == "ignore":
+        return Command(
+            goto=END,
+            update={
+                "classification_decision": result.classification,
+                "final_response": "I'm here to help with your shopping needs. Feel free to ask about products, orders, or anything ecommerce related!"
+            },
+        )
+    else:
+        raise ValueError(f"Invalid classification: {result.classification}")
+
+
+def intent_classifier(state: AgentState) -> Command:
+    """
+    Classify the user's intent to provide better contextual responses.
+    """
+    user_msg = state["user_input"]
+    chat_history = state.get("messages", [])[-5:]  # Last 5 messages for context
+    
+    context_prompt = INTENT_CLASSIFICATION_PROMPT.format(
+        user_input=user_msg,
+        chat_history="\n".join([f"{msg.type}: {msg.content}" for msg in chat_history])
+    )
+
+    intent_result = llm_intent.invoke([
+        {"role": "system", "content": "You are an expert at understanding user intents in ecommerce conversations."},
+        {"role": "user", "content": context_prompt},
+    ])
+
+    print(f"🎯 Intent: {intent_result.intent} (confidence: {intent_result.confidence})")
+    print(f"📝 Entities: {intent_result.entities}")
+
+    return Command(
+        goto="context_enricher",
+        update={
+            "user_intent": intent_result.intent,
+            "intent_confidence": intent_result.confidence,
+            "extracted_entities": intent_result.entities,
+            "intent_reasoning": intent_result.reasoning
+        }
+    )
+
+
+async def context_enricher(state: AgentState) -> Command:
+    """
+    Enrich the conversation context with user data and preferences.
+    """
+    user_id = state.get("user_id")
+    intent = state.get("user_intent")
+    entities = state.get("extracted_entities", {})
+    
+    enrichment_data = {}
+    
+    if user_id:
+        try:
+            from db.session import get_db_session
+            async with get_db_session() as db:
+                # Get user context based on intent
+                if intent in ["view_cart", "checkout", "place_order"]:
+                    from modules.cart.service import get_cart_items, get_cart_total
+                    cart_items = await get_cart_items(user_id, db)
+                    cart_total = await get_cart_total(user_id, db)
+                    enrichment_data["cart_context"] = {
+                        "item_count": len(cart_items),
+                        "total": float(cart_total),
+                        "items": [{"name": item.product.name, "quantity": item.quantity} for item in cart_items[:3]]
+                    }
+                
+                elif intent in ["product_search", "product_recommendation"]:
+                    user_behavior = await get_user_behavior(user_id, db)
+                    enrichment_data["user_

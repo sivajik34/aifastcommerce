@@ -14,7 +14,7 @@ async def get_cart_items(user_id: int, db: AsyncSession):
 
 
 async def add_to_cart(item: CartItemCreate, db: AsyncSession):
-    db_item = CartItem(**item.dict())
+    db_item = CartItem(**item.model_dump())
     db.add(db_item)
     await db.commit()
     await db.refresh(db_item)

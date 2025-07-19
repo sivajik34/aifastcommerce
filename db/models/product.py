@@ -1,5 +1,6 @@
 
-from sqlalchemy import Column, Integer, String, Float
+from sqlalchemy import Column, Integer, String, Float,DateTime, func,ForeignKey
+from sqlalchemy.orm import relationship
 from db.session import Base
 
 class Product(Base):
@@ -10,3 +11,10 @@ class Product(Base):
     description = Column(String)
     price = Column(Float)
     stock = Column(Integer)
+    category_id = Column(Integer, ForeignKey("categories.id"))
+    average_rating = Column(Float, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    review_count = Column(Integer, default=0)
+
+
+    category = relationship("Category", back_populates="products")

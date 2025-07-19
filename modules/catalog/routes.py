@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from . import service, schema
 from db.session import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
-router = APIRouter(prefix="/products", tags=["products"])
+router = APIRouter(prefix="/products", tags=["Products"])
 
 @router.get("/", response_model=list[schema.ProductOut])
 async def read_products(db: AsyncSession = Depends(get_db)):

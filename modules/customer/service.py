@@ -20,7 +20,7 @@ async def get_customer_by_email(email: str, db: AsyncSession):
 
 
 async def create_customer(data: CustomerCreate, db: AsyncSession):
-    customer = Customer(**data.dict())
+    customer = Customer(**data.model_dump())
     db.add(customer)
     await db.commit()
     await db.refresh(customer)
@@ -33,7 +33,7 @@ async def update_customer(customer_id: int, data: CustomerUpdate, db: AsyncSessi
     )
     customer = result.scalar_one_or_none()
     if customer:
-        for field, value in data.dict(exclude_unset=True).items():
+        for field, value in data.model_dump(exclude_unset=True).items():
             setattr(customer, field, value)
         await db.commit()
         await db.refresh(customer)
