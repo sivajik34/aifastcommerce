@@ -26,7 +26,7 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-from db.models import cart, customer,order,product,category,chat_message_history
+from db.models import chat_message_history
 
 target_metadata = Base.metadata
 
