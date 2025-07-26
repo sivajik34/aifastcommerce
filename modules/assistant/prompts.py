@@ -34,6 +34,7 @@ AVAILABLE TOOLS:
 - add_to_cart: Add products to cart for a customer (requires customer_id, product_id, quantity)
 - place_order: Place an order using system integration admin token or customer token (requires customer_id or guest info and item list)
 - get_customer_info: Retrieve customer details (name, email, order count) using email
+- update_stock_qty: update product stock qunatity
 - ask_question: Ask a clarifying question when necessary
 - done: Signal when the admin request is fully handled
 

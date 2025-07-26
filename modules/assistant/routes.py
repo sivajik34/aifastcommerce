@@ -10,8 +10,27 @@ from .schema import ChatRequest, ChatResponse
 from .agent import overall_workflow
 from .chat_history import chat_history_manager
 
+from langchain.memory import ConversationBufferMemory
+from langchain_postgres import PostgresChatMessageHistory
+import os
+import psycopg
+import logging
+from utils.log import Logger
+logger=Logger(name="agent_routes", log_file="Logs/app.log", level=logging.DEBUG)
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
+
+def get_langchain_memory(session_id: str):
+    chat_history = PostgresChatMessageHistory(
+        "chat_message_history",
+        session_id,
+        sync_connection=psycopg.connect(os.getenv("CON_STR"))
+    )
+    return ConversationBufferMemory(
+        chat_memory=chat_history,
+        return_messages=True,
+        memory_key="chat_history"
+    )
 
 
 def extract_response_text(messages) -> str:
@@ -43,15 +62,20 @@ async def chat_with_agent(request: ChatRequest):
         if not session_id:
             raise HTTPException(status_code=400, detail="session_id is required")
         
-        print(f"💬 Processing chat for user {session_id}: {request.message[:50]}...")
+        logger.info(f"💬 Processing chat for user {session_id}: {request.message[:50]}...")
 
         # Load existing chat history from PostgreSQL
-        previous_messages = await chat_history_manager.get_recent_messages(
-            str(session_id), 
-            limit=20  # Keep last 20 messages for context
-        )
+        #previous_messages = await chat_history_manager.get_recent_messages(
+        #    str(session_id), 
+        #    limit=20  # Keep last 20 messages for context
+        #)
+        memory = get_langchain_memory(session_id)
+
+        # Load previous messages
+        memory_vars = memory.load_memory_variables({})
+        previous_messages = memory_vars.get("chat_history", [])
         
-        print(f"📚 Loaded {len(previous_messages)} previous messages")
+        logger.info(f"📚 Loaded {len(previous_messages)} previous messages")
 
         # Create initial state with existing conversation history
         state = {
@@ -62,19 +86,25 @@ async def chat_with_agent(request: ChatRequest):
         }
 
         # Run the agent workflow
-        print("🚀 Starting agent workflow...")
+        logger.info("🚀 Starting agent workflow...")
         result = await overall_workflow.ainvoke(state)
         
         # Extract the new messages that were added during this interaction
         updated_messages = result.get("messages", [])
         new_messages = updated_messages[len(previous_messages):]
         
-        print(f"📤 Generated {len(new_messages)} new messages")
+        logger.info(f"📤 Generated {len(new_messages)} new messages")
 
         # Save new messages to PostgreSQL
+        #if new_messages:
+        #    await chat_history_manager.add_messages(str(session_id), new_messages)
+        #    logger.info("💾 Saved new messages to database")
+
         if new_messages:
-            await chat_history_manager.add_messages(str(session_id), new_messages)
-            print("💾 Saved new messages to database")
+            ai_messages = [msg for msg in new_messages if isinstance(msg, AIMessage)]
+            for msg in ai_messages:
+                memory.save_context({"input": request.message}, {"output": msg.content})
+            logger.info("💾 Saved new messages via LangChain memory")
 
         # Extract response for the user
         response_text = extract_response_text(updated_messages)
@@ -82,7 +112,7 @@ async def chat_with_agent(request: ChatRequest):
         # Extract any product information (for frontend integration)
         products = extract_products_from_messages(updated_messages)
 
-        print(f"✅ Response ready: {response_text[:50]}...")
+        logger.info(f"✅ Response ready: {response_text[:50]}...")
 
         return ChatResponse(
             response=response_text,
@@ -95,8 +125,8 @@ async def chat_with_agent(request: ChatRequest):
         raise
     except Exception as e:
         error_msg = f"Internal server error: {str(e)}"
-        print(f"❌ Chat error: {error_msg}")
-        traceback.print_exc()
+        logger.error(f"❌ Chat error: {error_msg}")
+        traceback.logger.info_exc()
         
         return JSONResponse(
             status_code=500,
@@ -118,12 +148,12 @@ async def clear_chat_history(session_id: str):
     """
     try:
         await chat_history_manager.clear_session(session_id)
-        print(f"🗑️ Cleared chat history for user {session_id}")
+        logger.info(f"🗑️ Cleared chat history for user {session_id}")
         
         return {"message": f"Chat history cleared for user {session_id}"}
     
     except Exception as e:
-        print(f"❌ Error clearing chat history: {str(e)}")
+        logger.error(f"❌ Error clearing chat history: {str(e)}")
         raise HTTPException(
             status_code=500, 
             detail=f"Failed to clear chat history: {str(e)}"
@@ -156,7 +186,7 @@ async def get_chat_history(session_id: str, limit: int = 50):
         }
     
     except Exception as e:
-        print(f"❌ Error retrieving chat history: {str(e)}")
+        logger.error(f"❌ Error retrieving chat history: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve chat history: {str(e)}"
