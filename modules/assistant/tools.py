@@ -362,5 +362,5 @@ async def create_order_for_customer(
 
 
 # Export tools list
-tools = [view_product,search_products, ask_question,get_customer_info,create_customer,create_order_for_customer, done]
+tools = [view_product,search_products, get_customer_info,create_customer,create_order_for_customer,ask_question, done]
 tools_by_name = {tool.name: tool for tool in tools}

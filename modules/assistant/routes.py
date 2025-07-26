@@ -10,8 +10,25 @@ from .schema import ChatRequest, ChatResponse
 from .agent import overall_workflow
 from .chat_history import chat_history_manager
 
+from langchain.memory import ConversationBufferMemory
+from langchain_postgres import PostgresChatMessageHistory
+import os
+import psycopg
+
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
+
+def get_langchain_memory(session_id: str):
+    chat_history = PostgresChatMessageHistory(
+        "chat_message_history",
+        session_id,
+        sync_connection=psycopg.connect(os.getenv("CON_STR"))
+    )
+    return ConversationBufferMemory(
+        chat_memory=chat_history,
+        return_messages=True,
+        memory_key="chat_history"
+    )
 
 
 def extract_response_text(messages) -> str:
@@ -46,10 +63,15 @@ async def chat_with_agent(request: ChatRequest):
         print(f"💬 Processing chat for user {session_id}: {request.message[:50]}...")
 
         # Load existing chat history from PostgreSQL
-        previous_messages = await chat_history_manager.get_recent_messages(
-            str(session_id), 
-            limit=20  # Keep last 20 messages for context
-        )
+        #previous_messages = await chat_history_manager.get_recent_messages(
+        #    str(session_id), 
+        #    limit=20  # Keep last 20 messages for context
+        #)
+        memory = get_langchain_memory(session_id)
+
+        # Load previous messages
+        memory_vars = memory.load_memory_variables({})
+        previous_messages = memory_vars.get("chat_history", [])
         
         print(f"📚 Loaded {len(previous_messages)} previous messages")
 
@@ -72,9 +94,15 @@ async def chat_with_agent(request: ChatRequest):
         print(f"📤 Generated {len(new_messages)} new messages")
 
         # Save new messages to PostgreSQL
+        #if new_messages:
+        #    await chat_history_manager.add_messages(str(session_id), new_messages)
+        #    print("💾 Saved new messages to database")
+
         if new_messages:
-            await chat_history_manager.add_messages(str(session_id), new_messages)
-            print("💾 Saved new messages to database")
+            ai_messages = [msg for msg in new_messages if isinstance(msg, AIMessage)]
+            for msg in ai_messages:
+                memory.save_context({"input": request.message}, {"output": msg.content})
+            print("💾 Saved new messages via LangChain memory")
 
         # Extract response for the user
         response_text = extract_response_text(updated_messages)
