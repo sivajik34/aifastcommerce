@@ -29,13 +29,12 @@ class AgentState(TypedDict, total=False):
     """Enhanced state for the ecommerce agent"""
     # Core conversation
     user_input: str
-    messages: List[BaseMessage]
-    user_id: Optional[int]
+    messages: List[BaseMessage]    
     session_id: Optional[str]
     
     # Classification and routing
-    classification_decision: str
-    classification_reasoning: str
+    classification_decision: Optional[str]
+    classification_reasoning: Optional[str]
 
     
     

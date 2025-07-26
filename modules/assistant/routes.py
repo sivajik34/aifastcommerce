@@ -39,15 +39,15 @@ async def chat_with_agent(request: ChatRequest):
     and returns AI responses with context.
     """
     try:
-        user_id = request.user_id
-        if not user_id:
-            raise HTTPException(status_code=400, detail="user_id is required")
+        session_id = request.session_id
+        if not session_id:
+            raise HTTPException(status_code=400, detail="session_id is required")
         
-        print(f"💬 Processing chat for user {user_id}: {request.message[:50]}...")
+        print(f"💬 Processing chat for user {session_id}: {request.message[:50]}...")
 
         # Load existing chat history from PostgreSQL
         previous_messages = await chat_history_manager.get_recent_messages(
-            str(user_id), 
+            str(session_id), 
             limit=20  # Keep last 20 messages for context
         )
         
@@ -56,9 +56,9 @@ async def chat_with_agent(request: ChatRequest):
         # Create initial state with existing conversation history
         state = {
             "user_input": request.message,
-            "user_id": str(user_id),
+            "session_id": str(session_id),
             "classification_decision": None,
-            "messages": previous_messages
+            "messages": previous_messages+ [HumanMessage(content=request.message)]
         }
 
         # Run the agent workflow
@@ -73,7 +73,7 @@ async def chat_with_agent(request: ChatRequest):
 
         # Save new messages to PostgreSQL
         if new_messages:
-            await chat_history_manager.add_messages(str(user_id), new_messages)
+            await chat_history_manager.add_messages(str(session_id), new_messages)
             print("💾 Saved new messages to database")
 
         # Extract response for the user
@@ -109,18 +109,18 @@ async def chat_with_agent(request: ChatRequest):
         )
 
 
-@router.delete("/chat/{user_id}")
-async def clear_chat_history(user_id: str):
+@router.delete("/chat/{session_id}")
+async def clear_chat_history(session_id: str):
     """
     Clear chat history for a specific user.
     
     Useful for testing or when users want to start fresh conversations.
     """
     try:
-        await chat_history_manager.clear_session(user_id)
-        print(f"🗑️ Cleared chat history for user {user_id}")
+        await chat_history_manager.clear_session(session_id)
+        print(f"🗑️ Cleared chat history for user {session_id}")
         
-        return {"message": f"Chat history cleared for user {user_id}"}
+        return {"message": f"Chat history cleared for user {session_id}"}
     
     except Exception as e:
         print(f"❌ Error clearing chat history: {str(e)}")
@@ -130,15 +130,15 @@ async def clear_chat_history(user_id: str):
         )
 
 
-@router.get("/chat/{user_id}/history")
-async def get_chat_history(user_id: str, limit: int = 50):
+@router.get("/chat/{session_id}/history")
+async def get_chat_history(session_id: str, limit: int = 50):
     """
     Retrieve chat history for a specific user.
     
     Useful for debugging or providing conversation context to other services.
     """
     try:
-        messages = await chat_history_manager.get_recent_messages(user_id, limit)
+        messages = await chat_history_manager.get_recent_messages(session_id, limit)
         
         # Convert messages to a serializable format
         history = []
@@ -150,7 +150,7 @@ async def get_chat_history(user_id: str, limit: int = 50):
             })
         
         return {
-            "user_id": user_id,
+            "session_id": session_id,
             "message_count": len(history),
             "messages": history
         }
