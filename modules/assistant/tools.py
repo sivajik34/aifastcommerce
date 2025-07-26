@@ -12,11 +12,29 @@ class ViewProductInput(BaseModel):
 class ViewCustomerInput(BaseModel):
     email: EmailStr
 
+class AddressInput(BaseModel):
+    firstname: str
+    lastname: str
+    street: List[str]
+    city: str
+    region: Optional[str]
+    region_id: Optional[int]
+    postcode: str
+    country_id: Literal["IN", "US", "UK", "CA", "AU"]  # Add more as needed
+    telephone: str
+    default_shipping: Optional[bool] = False
+    default_billing: Optional[bool] = False
+
 class CreateCustomerInput(BaseModel):
     email: EmailStr
     firstname:str
     lastname:str
-    password:str
+    password:Optional[str] = None
+    store_view_code: Optional[str] = "default"
+    website_id: Optional[int] = 1
+    store_id: Optional[int] = 1
+    group_id: Optional[int] = 1
+    address: Optional[AddressInput] = None
 
 class SearchProductsInput(BaseModel):
     query: Optional[str] = Field(description="Search query for products")
@@ -95,32 +113,50 @@ async def get_customer_info(email: str):
         return {"error": f"Failed to retrieve customer with email '{email}': {str(e)}"}
 
 @tool(args_schema=CreateCustomerInput)
-async def create_customer(email: str, firstname:str,lastname:str, password: str):
-    """Create a new customer account in Magento.
-    
-    Args:
-        email: Email address of the customer
-        firstname: First name
-        lastname: Last name
-        password: Password for the customer account
-        
-    Returns:
-        A confirmation message with customer ID if successful.
-    """   
-   
-    payload={
-        "customer": {"email": email, "firstname": firstname, "lastname": lastname, "website_id": 1, "store_id":1, "group_id": 1},
-        "password": password
+async def create_customer(
+    email: str,
+    firstname: str,
+    lastname: str,
+    password: Optional[str] = None,
+    website_id: int = 1,
+    group_id: int = 1,
+    store_id: int = 1,
+    address: Optional[AddressInput] = None
+):
+    """
+    Create a new customer account in Magento (Admin context).
+    Password is optional. Address can also be added optionally.
+    """
+
+    payload = {
+        "customer": {
+            "email": email,
+            "firstname": firstname,
+            "lastname": lastname,
+            "website_id": website_id,
+            "store_id": store_id,
+            "group_id": group_id
+        }
     }
+
+    if password:
+        payload["password"] = password
+
+    if address:
+        payload["customer"]["addresses"] = [address.dict(exclude_none=True)]
+
     try:
-        store_view_code="default"
-        response=magento_client.send_request(endpoint=f"/rest/{store_view_code}/V1/customers",method="POST",data=payload)
+        response = magento_client.send_request(
+            endpoint="/rest/V1/customers",
+            method="POST",
+            data=payload
+        )
         return {
-                "message": f"Customer created successfully",
-                "customer_id": response.get("id"),
-                "email": response.get("email"),
-                "name": f"{response.get('firstname')} {response.get('lastname')}"
-            }
+            "message": "Customer created successfully",
+            "customer_id": response.get("id"),
+            "email": response.get("email"),
+            "name": f"{response.get('firstname')} {response.get('lastname')}"
+        }
     except Exception as e:
         return {"error": f"Failed to create customer: {str(e)}"}                  
 

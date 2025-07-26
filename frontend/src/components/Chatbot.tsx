@@ -26,7 +26,7 @@ function generateUserId(): string {
 
 export default function Chatbot() {
   const [messages, setMessages] = useState<Message[]>([
-    { from: "bot", text: "Hi! Ask me about any product." },
+    { from: "bot", text: "Hi! Welcome to Magento AI Ecommerce Assistant." },
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -51,7 +51,7 @@ export default function Chatbot() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: userId,
+          session_id: userId,
           message: userMessage,
         }),
       });

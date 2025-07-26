@@ -22,7 +22,7 @@ class ChatHistoryManager:
         Get chat history for a specific session/user.
         
         Args:
-            session_id: Unique identifier for the chat session (typically user_id)
+            session_id: Unique identifier for the chat session
             
         Returns:
             PostgresChatMessageHistory instance for the session

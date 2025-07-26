@@ -32,9 +32,9 @@ def triage_router(state: AgentState) -> Command:
     """
     user_msg = state["user_input"]
     user_prompt = TRIAGE_USER_PROMPT.format(user_input=user_msg)
-
+    messages = state.get("messages", [])
     result = llm_router.invoke([
-        {"role": "system", "content": TRIAGE_SYSTEM_PROMPT},
+        {"role": "system", "content": TRIAGE_SYSTEM_PROMPT},*messages,
         {"role": "user", "content": user_prompt},
     ])
 
@@ -42,9 +42,9 @@ def triage_router(state: AgentState) -> Command:
         print(f"📧 Classification: respond - {result.reasoning}")
         return Command(
             goto="response_agent",
-            update={
-                "messages": [HumanMessage(content=user_msg)],
+            update={                
                 "classification_decision": result.classification,
+                "classification_reasoning": result.reasoning
             },
         )
     elif result.classification == "ignore":
