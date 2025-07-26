@@ -1,10 +1,12 @@
+import logging
 from typing import List, Optional,Dict,Literal
 from pydantic import BaseModel,Field,EmailStr
 from langchain_core.tools import tool
 
 from utils import common
 from .magento_oauth_client import MagentoOAuthClient
-
+from utils.log import Logger
+logger=Logger(name="tools", log_file="Logs/app.log", level=logging.DEBUG)
 # --- Tool Input Schemas ---
 class ViewProductInput(BaseModel):
     sku: str    
@@ -67,6 +69,7 @@ async def done():
     actions are needed. This will end the conversation gracefully.
     """
     return "Task completed successfully. Is there anything else I can help you with?"
+
 
 
 @tool
@@ -190,6 +193,59 @@ async def view_product(sku: str):
     except Exception as e:
         return {"error": f"Failed to retrieve product with SKU '{sku}': {str(e)}"}
 
+class UpdateStockInput(BaseModel):
+    sku: str
+    qty: float
+    is_in_stock: bool = True  # Optional, defaults to True
+
+@tool(args_schema=UpdateStockInput)
+async def update_stock_qty(sku: str, qty: float, is_in_stock: bool = True):
+    """Update stock quantity for a specific product.
+    
+    Args:
+        sku: The unique identifier of the product.
+        qty: New quantity to set for the product.
+        is_in_stock: Whether the product is in stock or not.
+        
+    Returns:
+        Confirmation message with updated quantity and status.
+    """
+    try:
+        # Fetch item ID (required for the stock update endpoint)
+        endpoint = f"/rest/V1/products/{sku}"
+        product = magento_client.send_request(endpoint=endpoint, method="GET")
+        stock_item = product.get("extension_attributes", {}).get("stock_item", {})
+        item_id = stock_item.get("item_id")
+
+        if not item_id:
+            return {"error": f"Could not find stock item for SKU '{sku}'."}
+
+        # Prepare update payload
+        update_endpoint = f"/rest/V1/products/{sku}/stockItems/{item_id}"
+        payload = {
+            "stockItem": {
+                "qty": qty,
+                "is_in_stock": is_in_stock
+            }
+        }
+
+        result = magento_client.send_request(
+            endpoint=update_endpoint,
+            method="PUT",
+            data=payload
+        )
+
+        return {
+            "sku": sku,
+            "updated_qty": qty,
+            "is_in_stock": is_in_stock,
+            "message": f"Stock quantity for SKU '{sku}' updated successfully."
+        }
+
+    except Exception as e:
+        return {"error": f"Failed to update stock for SKU '{sku}': {str(e)}"}
+
+
 @tool(args_schema=SearchProductsInput)
 async def search_products(
     query: str,
@@ -280,7 +336,7 @@ async def create_order_for_customer(
         
         customer = customers[0]
         customer_id = customer.get("id")
-
+        logger.info(f"customer id:{customer_id}")
         # Step 2: Create a cart (quote) for the customer
         cart_id = magento_client.send_request(
             endpoint=f"/rest/V1/customers/{customer_id}/carts",
@@ -288,7 +344,7 @@ async def create_order_for_customer(
         )
         if not cart_id:
             return {"error": "Failed to create cart for customer."}
-
+        logger.info(f"cart id:{cart_id}")
         # Step 3: Add items to the cart
         for item in items:
             add_item_payload = {
@@ -352,15 +408,16 @@ async def create_order_for_customer(
     method="PUT"
 )
         order_increment_id = order_response
-        return {
-            "message": "Order placed successfully",            
+        logger.info(f"order_increment_id:{order_increment_id}")
+        return {                       
             "order_increment_id": order_increment_id
         }
 
     except Exception as e:
+        logger.error(f"{str(e)}")
         return {"error": f"Failed to create order: {str(e)}"}
 
 
 # Export tools list
-tools = [view_product,search_products, get_customer_info,create_customer,create_order_for_customer,ask_question, done]
+tools = [view_product,search_products,update_stock_qty, get_customer_info,create_customer,create_order_for_customer,ask_question, done]
 tools_by_name = {tool.name: tool for tool in tools}

@@ -1,6 +1,7 @@
 """
 Main agent workflow for the ecommerce assistant
 """
+import logging
 import traceback
 from typing import Literal
 from langgraph.graph import StateGraph, START, END
@@ -15,7 +16,8 @@ from .prompts import (
     ASSISTANT_SYSTEM_PROMPT
 )
 from modules.llm.factory import get_llm_strategy
-
+from utils.log import Logger
+logger=Logger(name="agent", log_file="Logs/app.log", level=logging.DEBUG)
 # ---- LLM Setup ----
 strategy = get_llm_strategy("openai", "")
 llm = strategy.initialize()
@@ -39,7 +41,7 @@ def triage_router(state: AgentState) -> Command:
     ])
 
     if result.classification == "respond":
-        print(f"📧 Classification: respond - {result.reasoning}")
+        logger.info(f"📧 Classification: respond - {result.reasoning}")
         return Command(
             goto="response_agent",
             update={                
@@ -48,7 +50,7 @@ def triage_router(state: AgentState) -> Command:
             },
         )
     elif result.classification == "ignore":
-        print(f"🚫 Classification: ignore - {result.reasoning}")
+        logger.info(f"🚫 Classification: ignore - {result.reasoning}")
         return Command(
             goto=END,
             update={"classification_decision": result.classification},
@@ -64,7 +66,7 @@ def llm_call(state: AgentState):
     This node processes the conversation history and determines
     the appropriate tool to use based on the user's request.
     """
-    print("🧠 LLM reasoning and tool selection...")
+    logger.info("🧠 LLM reasoning and tool selection...")
 
     response = llm_with_tools.invoke(
         [
@@ -76,7 +78,7 @@ def llm_call(state: AgentState):
     # Log what tool was selected
     if hasattr(response, 'tool_calls') and response.tool_calls:
         tool_names = [tc.get("name") or getattr(tc, "name", "unknown") for tc in response.tool_calls]
-        print(f"🔧 Selected tools: {tool_names}")
+        logger.info(f"🔧 Selected tools: {tool_names}")
     
     return {"messages": state["messages"] + [response]}
 
@@ -88,19 +90,19 @@ async def tool_handler(state: AgentState):
     This node handles the actual execution of tools and manages
     any errors that might occur during tool execution.
     """
-    print("⚙️ Executing tools...")
+    logger.info("⚙️ Executing tools...")
     last_message = state["messages"][-1]
     
     # Ensure we have an AIMessage with tool_calls
     if not hasattr(last_message, 'tool_calls') or not last_message.tool_calls:
-        print("⚠️ No tool calls found in last message")
+        logger.info("⚠️ No tool calls found in last message")
         return {"messages": state["messages"]}
     
     tool_messages = []
 
     for idx, tool_call in enumerate(last_message.tool_calls):
         try:
-            print(f"\n--- Executing Tool [{idx + 1}] ---")
+            logger.info(f"\n--- Executing Tool [{idx + 1}] ---")
 
             # Safe access to tool call properties
             tool_name = getattr(tool_call, "name", tool_call.get("name"))
@@ -110,13 +112,13 @@ async def tool_handler(state: AgentState):
 
             tool_id = getattr(tool_call, "id", tool_call.get("id"))
 
-            print(f"🔧 Tool: {tool_name}")
-            print(f"📝 Args: {tool_args}")
+            logger.info(f"🔧 Tool: {tool_name}")
+            logger.info(f"📝 Args: {tool_args}")
 
             # Validate tool exists
             if tool_name not in tools_by_name:
                 error_msg = f"Tool '{tool_name}' not found"
-                print(f"❌ {error_msg}")
+                logger.info(f"❌ {error_msg}")
                 tool_messages.append(
                     ToolMessage(
                         tool_call_id=tool_id or f"unknown-{idx}",
@@ -133,14 +135,14 @@ async def tool_handler(state: AgentState):
             if not isinstance(result, str):
                 result = str(result)
                 
-            print(f"✅ Result: {result[:100]}{'...' if len(result) > 100 else ''}")
+            logger.info(f"✅ Result: {result[:100]}{'...' if len(result) > 100 else ''}")
             
             tool_messages.append(ToolMessage(tool_call_id=tool_id, content=result))
 
         except Exception as e:
             error_msg = f"Tool execution failed: {str(e)}"
-            print(f"❌ Error during tool_call [{idx + 1}]: {error_msg}")
-            traceback.print_exc()
+            logger.error(f"❌ Error during tool_call [{idx + 1}]: {error_msg}")
+            traceback.logger.info_exc()
             tool_messages.append(
                 ToolMessage(
                     tool_call_id=tool_id or f"unknown-{idx}",
@@ -168,7 +170,7 @@ def should_continue(state: AgentState) -> Literal["tool_handler", "__end__"]:
             if tool_name is None and isinstance(tool_call, dict):
                 tool_name = tool_call.get("name")
             if tool_name == "done":
-                print("🏁 Done tool detected - will end after execution")
+                logger.info("🏁 Done tool detected - will end after execution")
                 return "tool_handler"  # Execute the done tool, then end
         return "tool_handler"  # Execute other tools
     
@@ -183,7 +185,7 @@ def should_continue(state: AgentState) -> Literal["tool_handler", "__end__"]:
                     if tool_name is None and isinstance(tool_call, dict):
                         tool_name = tool_call.get("name")
                     if tool_name == "done" and getattr(tool_call, "id", tool_call.get("id")) == last_message.tool_call_id:
-                        print("🏁 Workflow complete - ending")
+                        logger.info("🏁 Workflow complete - ending")
                         return "__end__"
                 break
     
