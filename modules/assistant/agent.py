@@ -39,6 +39,7 @@ strategy = get_llm_strategy("openai", "")
 llm = strategy.initialize()
 tool_names = list(tools_by_name.keys())
 print(tool_names)
+print(f"total tools:{len(tool_names)}")
 llm_with_tools = llm.bind_tools(tools, tool_choice="auto", parallel_tool_calls=False)
 llm_router = llm.with_structured_output(RouterSchema)
 

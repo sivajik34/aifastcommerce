@@ -32,6 +32,28 @@ class CreateCustomerInput(BaseModel):
 class ViewProductInput(BaseModel):
     sku: str 
 
+class CreateProductInput(BaseModel):
+    sku: str
+    name: str
+    price: float
+    status: int  # 1 = Enabled, 2 = Disabled
+    type_id: str = "simple"
+    attribute_set_id: int = 4  # Default attribute set
+    weight: Optional[float] = 1.0
+    visibility: int = 4  # 4 = Catalog, Search
+    qty: Optional[float] = 0
+    is_in_stock: Optional[bool] = True
+
+class UpdateProductInput(BaseModel):
+    sku: str
+    name: Optional[str] = None
+    price: Optional[float] = None
+    status: Optional[int] = None  # 1 = Enabled, 2 = Disabled
+    visibility: Optional[int] = None  # 1 = Not visible, 2 = Catalog, 3 = Search, 4 = Catalog/Search
+    weight: Optional[float] = None
+    qty: Optional[float] = None
+    is_in_stock: Optional[bool] = None
+
 class SearchProductsInput(BaseModel):
     query: Optional[str] = Field(description="Search query for products")
     category_id: Optional[int] = Field(default=None, description="Filter by category")
@@ -101,4 +123,9 @@ class CreateCategoryInput(BaseModel):
     parent_id: Optional[int] = 2  # Default: under "Default Category" (id=2)
     is_active: Optional[bool] = True
     include_in_menu: Optional[bool] = True
+
+class AssignCategoryInput(BaseModel):
+    sku: str
+    category_ids: List[int]
+
       
