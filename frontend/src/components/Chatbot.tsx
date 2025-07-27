@@ -131,7 +131,7 @@ export default function Chatbot() {
     <div className="flex flex-col h-full max-h-screen bg-gray-50">
       {/* Header */}
       <div className="flex justify-between items-center p-4 bg-white border-b shadow-sm">
-        <h2 className="text-lg font-semibold text-gray-800">Product Assistant</h2>
+        <h2 className="text-lg font-semibold text-gray-800">Magento AI Assistant</h2>
         <button
           onClick={clearHistory}
           className="text-sm text-gray-500 hover:text-red-500 transition"

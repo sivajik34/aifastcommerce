@@ -126,7 +126,7 @@ async def chat_with_agent(request: ChatRequest):
     except Exception as e:
         error_msg = f"Internal server error: {str(e)}"
         logger.error(f"❌ Chat error: {error_msg}")
-        traceback.logger.info_exc()
+        #traceback.logger.info_exc()
         
         return JSONResponse(
             status_code=500,
