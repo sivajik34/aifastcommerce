@@ -1,5 +1,5 @@
 from langchain_core.tools import tool
-from .schemas import ViewProductInput,UpdateStockInput,SearchProductsInput
+from .schemas import ViewProductInput,UpdateStockInput,SearchProductsInput,CreateCategoryInput
 from .client import magento_client
 from typing import  Optional,Dict
 
@@ -137,4 +137,38 @@ async def search_products(
 
     except Exception as e:
         return error_response("search products", e)
-tools=[view_product,update_stock_qty,search_products]     
+    
+@tool(args_schema=CreateCategoryInput)
+def create_category(name: str,
+                    parent_id: int = 2,
+                    is_active: bool = True,
+                    include_in_menu: bool = True) -> dict:
+    """
+    Create a new category in Magento under the given parent category ID.
+    """
+    try:
+        payload = {
+            "category": {
+                "name": name,
+                "parent_id": parent_id,
+                "is_active": is_active,
+                "include_in_menu": include_in_menu
+            }
+        }
+        response = magento_client.send_request("/rest/V1/categories", method="POST", data=payload)
+        return {"category_id": response.get("id"), "name": response.get("name")}
+    except Exception as e:
+        return {"error": str(e)}
+
+@tool
+def list_all_categories() -> dict:
+    """
+    List all categories in Magento as a tree structure.
+    """
+    try:
+        response = magento_client.send_request("/rest/V1/categories", method="GET")
+        return response  # returns category tree
+    except Exception as e:
+        return {"error": str(e)}
+            
+tools=[view_product,update_stock_qty,search_products,list_all_categories,create_category]     

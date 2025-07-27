@@ -95,4 +95,10 @@ class GetOrdersInput(BaseModel):
     page_size: Optional[int] = 10
     current_page: Optional[int] = 1
     last_n_days: Optional[int] = None
+
+class CreateCategoryInput(BaseModel):
+    name: str
+    parent_id: Optional[int] = 2  # Default: under "Default Category" (id=2)
+    is_active: Optional[bool] = True
+    include_in_menu: Optional[bool] = True
       
