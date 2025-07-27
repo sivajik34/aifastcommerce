@@ -1,8 +1,10 @@
 from langchain_core.tools import tool
-from .schemas import ViewProductInput,UpdateStockInput,SearchProductsInput,CreateCategoryInput
+from .schemas import AssignCategoryInput,CreateProductInput,ViewProductInput,UpdateStockInput,SearchProductsInput,CreateCategoryInput,UpdateProductInput
 from .client import magento_client
-from typing import  Optional,Dict
-
+from typing import  Optional,Dict,List
+import logging
+from utils.log import Logger
+logger=Logger(name="product_tools", log_file="Logs/app.log", level=logging.DEBUG)
 def error_response(action: str, error: Exception) -> Dict:
     return {"error": f"Failed to {action}: {str(error)}"}
 
@@ -170,5 +172,155 @@ def list_all_categories() -> dict:
         return response  # returns category tree
     except Exception as e:
         return {"error": str(e)}
+
+@tool(args_schema=CreateProductInput)
+async def create_product(
+    sku: str,
+    name: str,
+    price: float,
+    status: int,
+    type_id: str = "simple",
+    attribute_set_id: int = 4,
+    weight: float = 1.0,
+    visibility: int = 4,
+    qty: float = 0,
+    is_in_stock: bool = True,
+):
+    """Create a new product in Magento.
+
+    Args:
+        sku: Product SKU
+        name: Product name
+        price: Product price
+        status: 1 = enabled, 2 = disabled
+        type_id: Product type (simple, virtual, configurable)
+        attribute_set_id: ID of the attribute set (default is 4)
+        weight: Product weight
+        visibility: 1 = Not visible, 2 = Catalog, 3 = Search, 4 = Catalog/Search
+        qty: Stock quantity
+        is_in_stock: Whether it's in stock
+
+    Returns:
+        A confirmation with product ID and SKU if created successfully.
+    """
+    try:
+        payload = {
+            "product": {
+                "sku": sku,
+                "name": name,
+                "price": price,
+                "status": status,
+                "type_id": type_id,
+                "attribute_set_id": attribute_set_id,
+                "weight": weight,
+                "visibility": visibility,
+                "extension_attributes": {
+                    "stock_item": {
+                        "qty": qty,
+                        "is_in_stock": is_in_stock
+                    }
+                }
+            }
+        }
+        response = magento_client.send_request("/rest/V1/products", method="POST", data=payload)
+        return {"product_id": response.get("id"), "sku": response.get("sku")}
+    except Exception as e:
+        return {"error": f"Failed to create product: {str(e)}"} 
+
+@tool(args_schema=UpdateProductInput)
+async def update_product(
+    sku: str,
+    name: Optional[str] = None,
+    price: Optional[float] = None,
+    status: Optional[int] = None,
+    visibility: Optional[int] = None,
+    weight: Optional[float] = None,
+    qty: Optional[float] = None,
+    is_in_stock: Optional[bool] = None,
+):
+    """Update an existing product in Magento using its SKU.
+
+    Args:
+        sku: Product SKU (required)
+        name: New name (optional)
+        price: New price (optional)
+        status: New status (1 = enabled, 2 = disabled)
+        visibility: New visibility (optional)
+        weight: New weight (optional)
+        qty: New quantity (optional)
+        is_in_stock: Stock status (optional)
+
+    Returns:
+        Updated product details or error message.
+    """
+    try:
+        product_data = {"sku": sku}  
+
+        if name is not None:
+            product_data["name"] = name
+        if price is not None:
+            product_data["price"] = price
+        if status is not None:
+            product_data["status"] = status
+        if visibility is not None:
+            product_data["visibility"] = visibility
+        if weight is not None:
+            product_data["weight"] = weight
+        if qty is not None or is_in_stock is not None:
+            product_data.setdefault("extension_attributes", {})
+            product_data["extension_attributes"]["stock_item"] = {}
+            if qty is not None:
+                product_data["extension_attributes"]["stock_item"]["qty"] = qty
+            if is_in_stock is not None:
+                product_data["extension_attributes"]["stock_item"]["is_in_stock"] = is_in_stock
+
+        if len(product_data) == 1:  # only `sku` present
+            return {"message": "No fields provided to update."}
+
+        payload = {"product": product_data}
+        logger.debug(payload)
+
+        endpoint = f"/rest/V1/products/{sku}"
+        response = magento_client.send_request(endpoint, method="PUT", data=payload)
+
+        return {"updated_product": response}
+    except Exception as e:
+        return {"error": f"Failed to update product {sku}: {str(e)}"}
+
+@tool(args_schema=AssignCategoryInput)
+async def assign_product_to_categories(sku: str, category_ids: List[int]):
+    """Assign a product to one or more categories by updating its category_ids.
+
+    Args:
+        sku: Product SKU
+        category_ids: List of category IDs to assign to the product
+
+    Returns:
+        Confirmation message or error.
+    """
+    try:
+        endpoint = f"/rest/V1/products/{sku}" #TODO default
+        category_links = [
+            {
+                "position": i,
+                "category_id": str(cat_id)
+            } for i, cat_id in enumerate(category_ids)
+        ]
+        payload = {
+            "product": {
+                "sku": sku,
+                "extension_attributes": {
+                    "category_links": category_links
+                }
+            }
+        }
+        response = magento_client.send_request(endpoint, method="PUT", data=payload)
+        return {
+            "message": f"Product '{sku}' assigned to categories {category_ids}.",
+            "updated_product": response
+        }
+    except Exception as e:
+        return {"error": f"Failed to assign categories: {str(e)}"}    
+
             
-tools=[view_product,update_stock_qty,search_products,list_all_categories,create_category]     
+tools=[view_product,update_stock_qty,search_products,list_all_categories,create_category,update_product,create_product,assign_product_to_categories]     
