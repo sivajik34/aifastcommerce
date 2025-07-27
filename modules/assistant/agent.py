@@ -9,7 +9,7 @@ from langgraph.types import Command
 from langchain_core.messages import ToolMessage, HumanMessage, SystemMessage, AIMessage
 
 from .state import AgentState, RouterSchema
-from .tools import tools, tools_by_name
+from modules.magento_tools import tools, tools_by_name
 from .prompts import (
     TRIAGE_SYSTEM_PROMPT, 
     TRIAGE_USER_PROMPT,
@@ -21,6 +21,8 @@ logger=Logger(name="agent", log_file="Logs/app.log", level=logging.DEBUG)
 # ---- LLM Setup ----
 strategy = get_llm_strategy("openai", "")
 llm = strategy.initialize()
+tool_names = list(tools_by_name.keys())
+print(tool_names)
 llm_with_tools = llm.bind_tools(tools, tool_choice="auto", parallel_tool_calls=False)
 llm_router = llm.with_structured_output(RouterSchema)
 
