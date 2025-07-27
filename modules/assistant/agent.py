@@ -18,6 +18,22 @@ from .prompts import (
 from modules.llm.factory import get_llm_strategy
 from utils.log import Logger
 logger=Logger(name="agent", log_file="Logs/app.log", level=logging.DEBUG)
+
+from langchain_community.vectorstores import FAISS
+from langchain_openai import OpenAIEmbeddings
+from langchain_core.messages import SystemMessage
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+embeddings = OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY"))
+# Load retriever from saved FAISS index
+retriever = FAISS.load_local(
+    "vectorstores/adobe_docs",
+    embeddings,
+    allow_dangerous_deserialization=True
+).as_retriever(search_type="similarity", k=4)
+
 # ---- LLM Setup ----
 strategy = get_llm_strategy("openai", "")
 llm = strategy.initialize()
@@ -58,31 +74,44 @@ def triage_router(state: AgentState) -> Command:
             update={"classification_decision": result.classification},
         )
     else:
-        raise ValueError(f"Invalid classification: {result.classification}")    
-
+        raise ValueError(f"Invalid classification: {result.classification}")     
+   
 
 def llm_call(state: AgentState):
-    """
-    Main LLM reasoning node that decides what tool to call next.
-    
-    This node processes the conversation history and determines
-    the appropriate tool to use based on the user's request.
-    """
-    logger.info("🧠 LLM reasoning and tool selection...")
+    logger.info("🧠 LLM reasoning and tool selection with RAG...")
 
+    user_input = state["user_input"]
+    messages = state["messages"]
+
+    # Retrieve relevant docs
+    relevant_docs = retriever.invoke(user_input)
+    context_text = "\n\n".join(doc.page_content for doc in relevant_docs)
+    #logger.debug(f"📚 Injected RAG Context:\n{context_text}")
+
+    # Compose system prompt with embedded docs as reference
+    rag_system_prompt = f"""{ASSISTANT_SYSTEM_PROMPT}
+
+==== REFERENCE DOCUMENTATION ====
+{context_text}
+===============================
+
+Use this documentation to answer the user's question if it helps.
+"""
+
+    # Call LLM with tools, injecting RAG context in system message
     response = llm_with_tools.invoke(
-        [
-            SystemMessage(content=ASSISTANT_SYSTEM_PROMPT),
-            *state["messages"]
-        ]
+        [SystemMessage(content=rag_system_prompt), *messages]
     )
-    
-    # Log what tool was selected
-    if hasattr(response, 'tool_calls') and response.tool_calls:
+    if not hasattr(response, "tool_calls") or not response.tool_calls:
+        logger.info("ℹ️ No tool calls - returning direct RAG-based answer")
+        return {"messages": messages + [response]}
+    # Log tool usage if any
+    if hasattr(response, "tool_calls") and response.tool_calls:
         tool_names = [tc.get("name") or getattr(tc, "name", "unknown") for tc in response.tool_calls]
         logger.info(f"🔧 Selected tools: {tool_names}")
-    
-    return {"messages": state["messages"] + [response]}
+
+    return {"messages": messages + [response]}
+
 
 
 async def tool_handler(state: AgentState):
