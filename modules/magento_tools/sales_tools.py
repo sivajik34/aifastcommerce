@@ -1,9 +1,11 @@
 from langchain_core.tools import tool
-from .schemas import CreateOrderInput,OrderItem,InvoiceInput,InvoiceItem,ShipmentItem,ShipmentInput,GetOrderByIncrementIdInput
+from .schemas import CreateOrderInput,OrderItem,InvoiceInput,InvoiceItem,ShipmentItem,ShipmentInput,GetOrderByIncrementIdInput,GetOrderIdInput,CancelOrderInput,GetOrdersInput
 from .client import magento_client
 from typing import  List
 import logging
 from utils.log import Logger
+from typing import Optional
+from datetime import datetime, timedelta
 logger=Logger(name="sales_tools", log_file="Logs/app.log", level=logging.DEBUG)
 
 @tool(args_schema=CreateOrderInput)
@@ -288,6 +290,109 @@ def get_order_info_by_increment_id(increment_id: str) -> dict:
     except Exception as e:
         logger.error(f"Failed to get order by increment_id: {e}")
         raise Exception("Failed to retrieve order using increment ID")
+    
+@tool(args_schema=GetOrderIdInput)
+def get_order_id_by_increment(increment_id: str) -> dict:
+    """Fetch internal order ID using the increment ID."""
+    try:
+        query_string = (
+            "searchCriteria[filterGroups][0][filters][0][field]=increment_id&"
+            f"searchCriteria[filterGroups][0][filters][0][value]={increment_id}&"
+            "searchCriteria[filterGroups][0][filters][0][conditionType]=eq"
+        )
+        endpoint = f"/rest/V1/orders?{query_string}"
+        response = magento_client.send_request(endpoint, method="GET")
+        items = response.get("items", [])
+        if not items:
+            return {"error": f"No order found for increment ID {increment_id}"}
+        return {"order_id": items[0]["entity_id"], "status": items[0]["status"]}
+    except Exception as e:
+        return {"error": str(e)}
+
+@tool(args_schema=CancelOrderInput)
+def cancel_order(order_id: int, comment: Optional[str] = None) -> dict:
+    """Cancel an order in Magento by order ID."""
+    try:
+        endpoint = f"/rest/V1/orders/{order_id}/cancel"
+        response = magento_client.send_request(endpoint, method="POST")
+        return {
+            "success": True,
+            "order_id": order_id,
+            "message": comment or "Order cancelled"
+        }
+    except Exception as e:
+        return {"error": str(e)} 
+
+@tool(args_schema=GetOrdersInput)
+def get_orders(status: Optional[str] = None,
+               payment_method: Optional[str] = None,
+               page_size: int = 10,
+               current_page: int = 1,
+               last_n_days: Optional[int] = None) -> dict:
+    """
+    Retrieve a list of Magento orders with dynamic filters.
+    
+    Filters supported:
+    - status: Filter by order status such as pending , processing etc.
+    - payment_method: Filter by payment method
+    - last_n_days: Filter by creation date
+    """
+    try:
+        filters = []
+
+        filter_index = 0
+        if status:
+            filters.append(
+                f"searchCriteria[filterGroups][{filter_index}][filters][0][field]=status"
+            )
+            filters.append(
+                f"searchCriteria[filterGroups][{filter_index}][filters][0][value]={status}"
+            )
+            filters.append(
+                f"searchCriteria[filterGroups][{filter_index}][filters][0][conditionType]=eq"
+            )
+            filter_index += 1
+
+        if payment_method:
+            filters.append(
+                f"searchCriteria[filterGroups][{filter_index}][filters][0][field]=payment.method"
+            )
+            filters.append(
+                f"searchCriteria[filterGroups][{filter_index}][filters][0][value]={payment_method}"
+            )
+            filters.append(
+                f"searchCriteria[filterGroups][{filter_index}][filters][0][conditionType]=eq"
+            )
+            filter_index += 1
+
+        if last_n_days:
+            date_str = (datetime.utcnow() - timedelta(days=last_n_days)).strftime('%Y-%m-%d %H:%M:%S')
+            filters.append(
+                f"searchCriteria[filterGroups][{filter_index}][filters][0][field]=created_at"
+            )
+            filters.append(
+                f"searchCriteria[filterGroups][{filter_index}][filters][0][value]={date_str}"
+            )
+            filters.append(
+                f"searchCriteria[filterGroups][{filter_index}][filters][0][conditionType]=gteq"
+            )
+            filter_index += 1
+
+        # Pagination
+        filters.append(f"searchCriteria[pageSize]={page_size}")
+        filters.append(f"searchCriteria[currentPage]={current_page}")
+
+        query_string = "&".join(filters)
+        endpoint = f"/rest/V1/orders?{query_string}"
+
+        response = magento_client.send_request(endpoint, method="GET")
+        return {
+            "orders": response.get("items", []),
+            "total_count": response.get("total_count", 0)
+        }
+    except Exception as e:
+        return {"error": str(e)}         
+
 
             
-tools=[create_order_for_customer,create_order_for_guest,create_invoice,create_shipment,get_order_info_by_increment_id]    
+tools=[get_orders,create_order_for_customer,create_order_for_guest,create_invoice,create_shipment,get_order_info_by_increment_id,get_order_id_by_increment,cancel_order]    
