@@ -144,7 +144,7 @@ async def tool_handler(state: AgentState):
         except Exception as e:
             error_msg = f"Tool execution failed: {str(e)}"
             logger.error(f"❌ Error during tool_call [{idx + 1}]: {error_msg}")
-            traceback.logger.info_exc()
+            #traceback.logger.info_exc()
             tool_messages.append(
                 ToolMessage(
                     tool_call_id=tool_id or f"unknown-{idx}",

@@ -31,7 +31,7 @@ class CreateCustomerInput(BaseModel):
 
 class ViewProductInput(BaseModel):
     sku: str 
-    
+
 class SearchProductsInput(BaseModel):
     query: Optional[str] = Field(description="Search query for products")
     category_id: Optional[int] = Field(default=None, description="Filter by category")
@@ -55,3 +55,29 @@ class CreateOrderInput(BaseModel):
     lastname: str
     items: List[OrderItem]
     payment_method: Literal["checkmo", "banktransfer", "cashondelivery"] = "checkmo"
+
+class InvoiceItem(BaseModel):
+    order_item_id: int
+    qty: int
+
+class InvoiceInput(BaseModel):
+    order_id: int
+    items: List[InvoiceItem]  
+    comment: str = "Invoice created"
+    notify: bool = True 
+
+class ShipmentItem(BaseModel):
+    order_item_id: int
+    qty: int
+
+
+class ShipmentInput(BaseModel):
+    order_id: int
+    items: List[ShipmentItem]
+    notify: bool = True
+    carrier_code: str = "custom"
+    track_number: str = "N/A"
+    title: str = "Standard Shipping"
+    
+class GetOrderByIncrementIdInput(BaseModel):
+    increment_id: str           
