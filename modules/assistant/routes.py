@@ -1,35 +1,29 @@
 """
 FastAPI routes for the assistant module
 """
-import traceback
+import os
+import psycopg
+import logging
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_postgres import PostgresChatMessageHistory
 
 from .schema import ChatRequest, ChatResponse
 from .supervisor_agent import run_workflow
 from .chat_history import chat_history_manager
-
-from langchain.memory import ConversationBufferMemory
-from langchain_postgres import PostgresChatMessageHistory
-import os
-import psycopg
-import logging
 from utils.log import Logger
+
 logger=Logger(name="agent_routes", log_file="Logs/app.log", level=logging.DEBUG)
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
 
-def get_langchain_memory(session_id: str):
-    chat_history = PostgresChatMessageHistory(
+def get_message_history(session_id: str):
+    """Create a Postgres-backed message history object"""
+    return PostgresChatMessageHistory(
         "chat_message_history",
         session_id,
         sync_connection=psycopg.connect(os.getenv("CON_STR"))
-    )
-    return ConversationBufferMemory(
-        chat_memory=chat_history,
-        return_messages=True,
-        memory_key="chat_history"
     )
 
 def is_useful_message(msg):
@@ -70,10 +64,6 @@ def extract_response_text(messages) -> str:
     # Step 3: Nothing found
     return "I'm here to help! Please ask your question again."
 
-
-
-
-
 def extract_products_from_messages(messages) -> list:
     """Extract product information mentioned in the conversation."""
     products = []
@@ -102,29 +92,17 @@ async def chat_with_agent(request: ChatRequest):
         #    str(session_id), 
         #    limit=20  # Keep last 20 messages for context
         #)
-        memory = get_langchain_memory(session_id)
+        history  = get_message_history(session_id)
 
-        # Load previous messages
-        memory_vars = memory.load_memory_variables({})
-        previous_messages = memory_vars.get("chat_history", [])
+        previous_messages = history.messages
         
-        logger.info(f"📚 Loaded {len(previous_messages)} previous messages")
-
-        # Create initial state with existing conversation history
-        state = {
-            "user_input": request.message,
-            "session_id": str(session_id),
-            "classification_decision": None,
-            "messages": previous_messages+ [HumanMessage(content=request.message)]
-        }
+        logger.info(f"📚 Loaded {len(previous_messages)} previous messages")        
 
         # Run the agent workflow
         logger.info("🚀 Starting agent workflow...")
 
         result=await run_workflow(request.message, str(session_id), previous_messages+ [HumanMessage(content=request.message)])
-        logger.debug(f"🧪 Raw result from workflow: {result}")
-
-        #result = await overall_workflow.ainvoke(state)
+        logger.debug(f"🧪 Raw result from workflow: {result}")        
         
         # Extract the new messages that were added during this interaction
         result_messages = result.get("messages", [])
@@ -140,10 +118,14 @@ async def chat_with_agent(request: ChatRequest):
         #    logger.info("💾 Saved new messages to database")
 
         if new_messages:
-            ai_messages = [msg for msg in new_messages if isinstance(msg, AIMessage)]
-            for msg in ai_messages:
-                memory.save_context({"input": request.message}, {"output": msg.content})
-            logger.info("💾 Saved new messages via LangChain memory")
+            # Save user message first
+            history.add_user_message(request.message)
+
+            # Then save each AI message
+            for msg in new_messages:
+                if isinstance(msg, AIMessage):
+                    history.add_ai_message(msg.content)
+            logger.info("💾 Saved new messages to Postgres")
 
         # Extract response for the user
         response_text = extract_response_text(updated_messages)
@@ -164,8 +146,7 @@ async def chat_with_agent(request: ChatRequest):
         raise
     except Exception as e:
         error_msg = f"Internal server error: {str(e)}"
-        logger.error(f"❌ Chat error: {error_msg}")
-        #traceback.logger.info_exc()
+        logger.error(f"❌ Chat error: {error_msg}")        
         
         return JSONResponse(
             status_code=500,
