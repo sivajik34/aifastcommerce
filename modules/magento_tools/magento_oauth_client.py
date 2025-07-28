@@ -8,8 +8,16 @@ import logging
 import json
 from typing import List, Optional, Dict, Any,Union
 
-logger = logging.getLogger(__name__)
+import logging
+from utils.log import Logger
+logger=Logger(name="magento_oauth_client", log_file="Logs/app.log", level=logging.DEBUG)
+
 class MagentoOAuthClient:
+
+    REST_ENDPOINT_TEMPLATE = "/rest/{store_view_code}/{api_version}/{endpoint}"
+    DEFAULT_STORE_VIEW_CODE = "default"
+    DEFAULT_API_VERSION = "V1"
+
     def __init__(
         self,
         base_url: Optional[str] = None,
@@ -106,9 +114,24 @@ class MagentoOAuthClient:
     
         return session
     
+    def build_endpoint(self, endpoint: str, store_view_code: Optional[str] = None,
+                       api_version: Optional[str] = None) -> str:
+        """
+        Build the full endpoint by injecting the store view code and API version.
+        """
+        store_view_code = store_view_code or self.DEFAULT_STORE_VIEW_CODE
+        api_version = api_version or self.DEFAULT_API_VERSION
+        # Make sure endpoint does not start with a slash to avoid duplication
+        endpoint = endpoint.lstrip('/')
+        return self.REST_ENDPOINT_TEMPLATE.format(
+            store_view_code=store_view_code,
+            api_version=api_version,
+            endpoint=endpoint
+        )
     
     def send_request(self, endpoint: str, method: str = "GET", data: Optional[Dict] = None, 
-                    headers: Optional[Dict] = None, extra_options: Optional[Dict] = None,token=None) -> Union[Dict, str]:
+                    headers: Optional[Dict] = None, extra_options: Optional[Dict] = None,token=None, store_view_code: Optional[str] = None,
+                     api_version: Optional[str] = None) -> Union[Dict, str]:
         """Send an HTTP request to the Magento API with OAuth1 authentication."""
         if extra_options is None:
             extra_options = {}
@@ -130,8 +153,9 @@ class MagentoOAuthClient:
                 raise ValueError(f"Failed to prepare data for request: {str(e)}")
 
         try:
-            # Build full URL
-            full_url = urljoin(self.base_url.rstrip('/') + '/', endpoint.lstrip('/'))
+            formatted_endpoint = self.build_endpoint(endpoint, store_view_code, api_version)
+            full_url = urljoin(self.base_url.rstrip('/') + '/', formatted_endpoint.lstrip('/'))
+            logger.info(full_url)
             
             # Make the request with OAuth1 authentication
             response = self.session.request(

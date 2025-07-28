@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from langchain_core.messages import AIMessage, HumanMessage
 
 from .schema import ChatRequest, ChatResponse
-from .agent import overall_workflow
+from .supervisor_agent import run_workflow
 from .chat_history import chat_history_manager
 
 from langchain.memory import ConversationBufferMemory
@@ -32,13 +32,46 @@ def get_langchain_memory(session_id: str):
         memory_key="chat_history"
     )
 
+def is_useful_message(msg):
+    if isinstance(msg, AIMessage):
+        if msg.name == "supervisor":
+            return False
+        if msg.content and msg.content.strip().lower().startswith("transferring"):
+            return False
+        if "request should be handled" in msg.content.lower():
+            return False
+    return True
 
 def extract_response_text(messages) -> str:
-    """Extract the most recent AI response from the message history."""
+    """
+    Extract the most relevant AI message that is:
+    - Not from the 'supervisor' agent
+    - Not a system-like handoff message (e.g., "Transferring to...")
+    - Has actual content
+    """
+    # Step 1: Filter AI messages with meaningful content
+    candidate_msgs = [
+        msg for msg in messages
+        if isinstance(msg, AIMessage)
+        and msg.name != "supervisor"
+        and msg.content
+        and not msg.content.strip().lower().startswith("transferring")
+        and not msg.content.strip().lower().startswith("request was handled by")
+    ]
+
+    if candidate_msgs:
+        return candidate_msgs[-1].content.strip()
+
+    # Step 2: Fallback to last non-empty AI message
     for msg in reversed(messages):
-        if isinstance(msg, AIMessage) and msg.content.strip():
+        if isinstance(msg, AIMessage) and msg.content:
             return msg.content.strip()
-    return "I'm here to help! Please let me know what you'd like to do."
+
+    # Step 3: Nothing found
+    return "I'm here to help! Please ask your question again."
+
+
+
 
 
 def extract_products_from_messages(messages) -> list:
@@ -87,10 +120,16 @@ async def chat_with_agent(request: ChatRequest):
 
         # Run the agent workflow
         logger.info("🚀 Starting agent workflow...")
-        result = await overall_workflow.ainvoke(state)
+
+        result=await run_workflow(request.message, str(session_id), previous_messages+ [HumanMessage(content=request.message)])
+        logger.debug(f"🧪 Raw result from workflow: {result}")
+
+        #result = await overall_workflow.ainvoke(state)
         
         # Extract the new messages that were added during this interaction
-        updated_messages = result.get("messages", [])
+        result_messages = result.get("messages", [])
+        updated_messages = [msg for msg in result_messages if is_useful_message(msg)]
+        #memory.save_context({"input": user_input}, {"output": extract_response_text(useful_messages)})
         new_messages = updated_messages[len(previous_messages):]
         
         logger.info(f"📤 Generated {len(new_messages)} new messages")

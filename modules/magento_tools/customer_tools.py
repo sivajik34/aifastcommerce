@@ -14,7 +14,7 @@ async def get_customer_info(email: str):
         Customer details including name, email.        
     """
     try:        
-        endpoint=f'/rest/V1/customers/search?searchCriteria[filterGroups][0][filters][0][field]=email&searchCriteria[filterGroups][0][filters][0][value]={email}'
+        endpoint=f'customers/search?searchCriteria[filterGroups][0][filters][0][field]=email&searchCriteria[filterGroups][0][filters][0][value]={email}'
         data=magento_client.send_request(endpoint=endpoint, method="GET")
         customers=data.get("items",[])
         if customers:
@@ -67,7 +67,7 @@ async def create_customer(
 
     try:
         response = magento_client.send_request(
-            endpoint="/rest/V1/customers",
+            endpoint="customers",
             method="POST",
             data=payload
         )

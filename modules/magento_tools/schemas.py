@@ -1,6 +1,9 @@
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Literal
    
+class MagentoAPIBase(BaseModel):
+    store_view_code: Optional[str] = "default"
+    api_version: Optional[str] = "v1"
 
 class ViewCustomerInput(BaseModel):
     email: EmailStr
@@ -29,7 +32,7 @@ class CreateCustomerInput(BaseModel):
     group_id: Optional[int] = 1
     address: Optional[AddressInput] = None
 
-class ViewProductInput(BaseModel):
+class ViewProductInput(MagentoAPIBase):
     sku: str 
 
 class CreateProductInput(BaseModel):
