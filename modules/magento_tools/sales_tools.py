@@ -22,7 +22,7 @@ async def create_order_for_customer(
     """
     try:
         # Step 1: Get customer ID by email
-        endpoint = f"/rest/V1/customers/search?searchCriteria[filterGroups][0][filters][0][field]=email&searchCriteria[filterGroups][0][filters][0][value]={customer_email}"
+        endpoint = f"customers/search?searchCriteria[filterGroups][0][filters][0][field]=email&searchCriteria[filterGroups][0][filters][0][value]={customer_email}"
         customer_data = magento_client.send_request(endpoint, method="GET")
         customers = customer_data.get("items", [])
         if not customers:
@@ -33,7 +33,7 @@ async def create_order_for_customer(
         logger.info(f"customer id:{customer_id}")
         # Step 2: Create a cart (quote) for the customer
         cart_id = magento_client.send_request(
-            endpoint=f"/rest/V1/customers/{customer_id}/carts",
+            endpoint=f"customers/{customer_id}/carts",
             method="POST"
         )
         if not cart_id:
@@ -49,7 +49,7 @@ async def create_order_for_customer(
                 }
             }
             magento_client.send_request(
-                endpoint=f"/rest/V1/carts/{cart_id}/items",
+                endpoint=f"carts/{cart_id}/items",
                 method="POST",
                 data=add_item_payload
             )
@@ -79,7 +79,7 @@ async def create_order_for_customer(
             }
         }
         magento_client.send_request(
-            endpoint=f"/rest/V1/carts/{cart_id}/shipping-information",
+            endpoint=f"carts/{cart_id}/shipping-information",
             method="POST",
             data=shipping_info_payload
         )
@@ -93,12 +93,12 @@ async def create_order_for_customer(
             "email": customer_email
         }
         magento_client.send_request(
-            endpoint=f"/rest/V1/carts/{cart_id}/selected-payment-method",
+            endpoint=f"carts/{cart_id}/selected-payment-method",
             method="PUT",
             data=payment_payload
         )
         order_response = magento_client.send_request(
-    endpoint=f"/rest/V1/carts/{cart_id}/order",
+    endpoint=f"carts/{cart_id}/order",
     method="PUT"
 )
         order_increment_id = order_response
@@ -125,7 +125,7 @@ async def create_order_for_guest(
     try:
         # Step 1: Create a guest cart
         cart_id = magento_client.send_request(
-            endpoint="/rest/V1/guest-carts",
+            endpoint="guest-carts",
             method="POST"
         )
         if not cart_id:
@@ -142,7 +142,7 @@ async def create_order_for_guest(
                 }
             }
             magento_client.send_request(
-                endpoint=f"/rest/V1/guest-carts/{cart_id}/items",
+                endpoint=f"guest-carts/{cart_id}/items",
                 method="POST",
                 data=add_item_payload
             )
@@ -172,7 +172,7 @@ async def create_order_for_guest(
             }
         }
         magento_client.send_request(
-            endpoint=f"/rest/V1/guest-carts/{cart_id}/shipping-information",
+            endpoint=f"guest-carts/{cart_id}/shipping-information",
             method="POST",
             data=shipping_info_payload
         )
@@ -187,7 +187,7 @@ async def create_order_for_guest(
         }
 
         order_response = magento_client.send_request(
-            endpoint=f"/rest/V1/guest-carts/{cart_id}/payment-information",
+            endpoint=f"guest-carts/{cart_id}/payment-information",
             method="POST",
             data=payment_payload
         )
@@ -233,7 +233,7 @@ async def create_invoice(order_id: int, items: List[InvoiceItem], comment: str =
         }
 
         invoice_response = magento_client.send_request(
-            endpoint=f"/rest/V1/order/{order_id}/invoice",
+            endpoint=f"order/{order_id}/invoice",
             method="POST",
             data=payload
         )
@@ -268,7 +268,7 @@ def create_shipment(order_id: int, items: List[ShipmentItem], notify: bool = Tru
         }
     }
     
-    result = magento_client.send_request(f"/rest/V1/order/{order_id}/ship", method="POST",data=payload)
+    result = magento_client.send_request(f"order/{order_id}/ship", method="POST",data=payload)
     return result
 
 
@@ -281,7 +281,7 @@ def get_order_info_by_increment_id(increment_id: str) -> dict:
             f"searchCriteria[filterGroups][0][filters][0][value]={increment_id}&"
             "searchCriteria[filterGroups][0][filters][0][conditionType]=eq"
         )
-        endpoint = f"/rest/V1/orders?{query_string}"
+        endpoint = f"orders?{query_string}"
         response = magento_client.send_request(endpoint, method="GET")
         if response.get("items"):
             return response["items"][0]
@@ -300,7 +300,7 @@ def get_order_id_by_increment(increment_id: str) -> dict:
             f"searchCriteria[filterGroups][0][filters][0][value]={increment_id}&"
             "searchCriteria[filterGroups][0][filters][0][conditionType]=eq"
         )
-        endpoint = f"/rest/V1/orders?{query_string}"
+        endpoint = f"orders?{query_string}"
         response = magento_client.send_request(endpoint, method="GET")
         items = response.get("items", [])
         if not items:
@@ -313,7 +313,7 @@ def get_order_id_by_increment(increment_id: str) -> dict:
 def cancel_order(order_id: int, comment: Optional[str] = None) -> dict:
     """Cancel an order in Magento by order ID."""
     try:
-        endpoint = f"/rest/V1/orders/{order_id}/cancel"
+        endpoint = f"orders/{order_id}/cancel"
         response = magento_client.send_request(endpoint, method="POST")
         return {
             "success": True,
@@ -383,7 +383,7 @@ def get_orders(status: Optional[str] = None,
         filters.append(f"searchCriteria[currentPage]={current_page}")
 
         query_string = "&".join(filters)
-        endpoint = f"/rest/V1/orders?{query_string}"
+        endpoint = f"orders?{query_string}"
 
         response = magento_client.send_request(endpoint, method="GET")
         return {

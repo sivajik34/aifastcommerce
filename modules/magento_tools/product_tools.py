@@ -20,7 +20,7 @@ async def view_product(sku: str):
         Use this before adding items to cart or when users ask about specific products.
     """
     try:
-        endpoint = f"/rest/V1/products/{sku}"
+        endpoint = f"products/{sku}"
         product=magento_client.send_request(endpoint=endpoint, method="GET")
         name = product.get("name")
         price = product.get("price", product.get("price", 0.0))
@@ -51,7 +51,7 @@ async def update_stock_qty(sku: str, qty: float, is_in_stock: bool = True):
     """
     try:
         # Fetch item ID (required for the stock update endpoint)
-        endpoint = f"/rest/V1/products/{sku}"
+        endpoint = f"products/{sku}"
         product = magento_client.send_request(endpoint=endpoint, method="GET")
         stock_item = product.get("extension_attributes", {}).get("stock_item", {})
         item_id = stock_item.get("item_id")
@@ -60,7 +60,7 @@ async def update_stock_qty(sku: str, qty: float, is_in_stock: bool = True):
             return {"error": f"Could not find stock item for SKU '{sku}'."}
 
         # Prepare update payload
-        update_endpoint = f"/rest/V1/products/{sku}/stockItems/{item_id}"
+        update_endpoint = f"products/{sku}/stockItems/{item_id}"
         payload = {
             "stockItem": {
                 "qty": qty,
@@ -131,7 +131,7 @@ async def search_products(
         filters.append(f"searchCriteria[sortOrders][0][field]={sort_field}")
         filters.append(f"searchCriteria[sortOrders][0][direction]={direction}")
 
-        endpoint = "/rest/V1/products?" + "&".join(filters)
+        endpoint = "products?" + "&".join(filters)
         response = magento_client.send_request(endpoint, method="GET")
         items = response.get("items", [])
 
@@ -157,7 +157,7 @@ def create_category(name: str,
                 "include_in_menu": include_in_menu
             }
         }
-        response = magento_client.send_request("/rest/V1/categories", method="POST", data=payload)
+        response = magento_client.send_request("categories", method="POST", data=payload)
         return {"category_id": response.get("id"), "name": response.get("name")}
     except Exception as e:
         return {"error": str(e)}
@@ -168,7 +168,7 @@ def list_all_categories() -> dict:
     List all categories in Magento as a tree structure.
     """
     try:
-        response = magento_client.send_request("/rest/V1/categories", method="GET")
+        response = magento_client.send_request("categories", method="GET")
         return response  # returns category tree
     except Exception as e:
         return {"error": str(e)}
@@ -222,7 +222,7 @@ async def create_product(
                 }
             }
         }
-        response = magento_client.send_request("/rest/V1/products", method="POST", data=payload)
+        response = magento_client.send_request("products", method="POST", data=payload)
         return {"product_id": response.get("id"), "sku": response.get("sku")}
     except Exception as e:
         return {"error": f"Failed to create product: {str(e)}"} 
@@ -280,7 +280,7 @@ async def update_product(
         payload = {"product": product_data}
         logger.debug(payload)
 
-        endpoint = f"/rest/V1/products/{sku}"
+        endpoint = f"products/{sku}"
         response = magento_client.send_request(endpoint, method="PUT", data=payload)
 
         return {"updated_product": response}
@@ -299,7 +299,7 @@ async def assign_product_to_categories(sku: str, category_ids: List[int]):
         Confirmation message or error.
     """
     try:
-        endpoint = f"/rest/V1/products/{sku}" #TODO default
+        endpoint = f"products/{sku}" #TODO default
         category_links = [
             {
                 "position": i,
