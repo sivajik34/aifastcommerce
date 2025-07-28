@@ -19,7 +19,7 @@ async def view_product(sku: str):
         Product details including name, current price, and available stock quantity.
         Use this before adding items to cart or when users ask about specific products.
     """
-    try:
+    try:        
         endpoint = f"products/{sku}"
         product=magento_client.send_request(endpoint=endpoint, method="GET")
         name = product.get("name")
@@ -253,6 +253,7 @@ async def update_product(
     Returns:
         Updated product details or error message.
     """
+    logger.info("update_product tool invoked")
     try:
         product_data = {"sku": sku}  
 
@@ -298,12 +299,14 @@ async def assign_product_to_categories(sku: str, category_ids: List[int]):
     Returns:
         Confirmation message or error.
     """
+    logger.info("assign_product_to_categories tool invoked")
+    logger.info(f"category_ids:{category_ids}")    
     try:
-        endpoint = f"products/{sku}" #TODO default
+        endpoint = f"products/{sku}" 
         category_links = [
             {
                 "position": i,
-                "category_id": str(cat_id)
+                "category_id": int(cat_id)
             } for i, cat_id in enumerate(category_ids)
         ]
         payload = {

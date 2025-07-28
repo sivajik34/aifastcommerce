@@ -1,5 +1,7 @@
 from langchain_core.tools import tool
-
+import logging
+from utils.log import Logger
+logger=Logger(name="utility_tools", log_file="Logs/app.log", level=logging.DEBUG)
 @tool
 async def done():
     """Signal that the agent has completed all requested tasks successfully.
@@ -7,7 +9,10 @@ async def done():
     Call this tool when you have fully completed the user's request and no further 
     actions are needed. This will end the conversation gracefully.
     """
-    return "Task completed successfully. Is there anything else I can help you with?"
+    
+   
+    logger.info("✅ done() tool invoked.")
+    return "Task completed successfully."
 
 
 

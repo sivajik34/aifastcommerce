@@ -17,9 +17,9 @@ async def create_order_for_customer(
     payment_method: str = "checkmo"
 ):
     """
-    Place an order for a registered customer using admin System Integration credentials
-    following Magento 2 REST API cart + order flow.
+    Place an order for a registered customer.     
     """
+    logger.info("create_order_for_customer tool invoked")
     try:
         # Step 1: Get customer ID by email
         endpoint = f"customers/search?searchCriteria[filterGroups][0][filters][0][field]=email&searchCriteria[filterGroups][0][filters][0][value]={customer_email}"
@@ -122,6 +122,7 @@ async def create_order_for_guest(
     """
     Place an order for a guest (non-registered) customer using Magento 2 REST guest-carts APIs.
     """
+    logger.info("create_order_for_guest tool invoked")
     try:
         # Step 1: Create a guest cart
         cart_id = magento_client.send_request(
@@ -275,6 +276,8 @@ def create_shipment(order_id: int, items: List[ShipmentItem], notify: bool = Tru
 @tool(args_schema=GetOrderByIncrementIdInput)
 def get_order_info_by_increment_id(increment_id: str) -> dict:
     """Get full order details using the order increment ID (like 000000123)."""
+
+    logger.info("get_order_info_by_increment_id tool invoked")
     try:
         query_string = (
             "searchCriteria[filterGroups][0][filters][0][field]=increment_id&"
@@ -293,7 +296,9 @@ def get_order_info_by_increment_id(increment_id: str) -> dict:
     
 @tool(args_schema=GetOrderIdInput)
 def get_order_id_by_increment(increment_id: str) -> dict:
-    """Fetch internal order ID using the increment ID."""
+    """Fetch internal order ID using the order increment ID."""
+
+    logger.info("get_order_id_by_increment tool invoked")
     try:
         query_string = (
             "searchCriteria[filterGroups][0][filters][0][field]=increment_id&"
@@ -305,6 +310,7 @@ def get_order_id_by_increment(increment_id: str) -> dict:
         items = response.get("items", [])
         if not items:
             return {"error": f"No order found for increment ID {increment_id}"}
+        
         return {"order_id": items[0]["entity_id"], "status": items[0]["status"]}
     except Exception as e:
         return {"error": str(e)}
@@ -312,6 +318,7 @@ def get_order_id_by_increment(increment_id: str) -> dict:
 @tool(args_schema=CancelOrderInput)
 def cancel_order(order_id: int, comment: Optional[str] = None) -> dict:
     """Cancel an order in Magento by order ID."""
+    
     try:
         endpoint = f"orders/{order_id}/cancel"
         response = magento_client.send_request(endpoint, method="POST")
@@ -391,8 +398,7 @@ def get_orders(status: Optional[str] = None,
             "total_count": response.get("total_count", 0)
         }
     except Exception as e:
-        return {"error": str(e)}         
-
+        return {"error": str(e)} 
 
             
 tools=[get_orders,create_order_for_customer,create_order_for_guest,create_invoice,create_shipment,get_order_info_by_increment_id,get_order_id_by_increment,cancel_order]    
