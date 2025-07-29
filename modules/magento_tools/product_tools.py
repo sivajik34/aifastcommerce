@@ -1,5 +1,5 @@
 from langchain_core.tools import tool
-from .schemas import AssignCategoryInput,CreateProductInput,ViewProductInput,UpdateStockInput,SearchProductsInput,CreateCategoryInput,UpdateProductInput
+from .schemas import LowStockAlertInput,AssignCategoryInput,CreateProductInput,ViewProductInput,UpdateStockInput,SearchProductsInput,CreateCategoryInput,UpdateProductInput
 from .client import magento_client
 from typing import  Optional,Dict,List
 import logging
@@ -323,7 +323,85 @@ async def assign_product_to_categories(sku: str, category_ids: List[int]):
             "updated_product": response
         }
     except Exception as e:
-        return {"error": f"Failed to assign categories: {str(e)}"}    
+        return {"error": f"Failed to assign categories: {str(e)}"}
+
+from urllib.parse import urlencode
+
+def get_product_skus_by_ids(product_ids: List[int]) -> List[Dict]:
+    """Fetch full product info (includes SKU) for given product_ids"""
+    if not product_ids:
+        return []
+
+    # Construct search criteria query string manually
+    base_endpoint = "products"
+    query_params = {
+        "searchCriteria[filterGroups][0][filters][0][field]": "entity_id",
+        "searchCriteria[filterGroups][0][filters][0][value]": ",".join(str(pid) for pid in product_ids),
+        "searchCriteria[filterGroups][0][filters][0][condition_type]": "in"
+    }
+    full_endpoint = f"{base_endpoint}?{urlencode(query_params)}"
+
+    response = magento_client.send_request(
+        endpoint=full_endpoint,
+        method="GET"
+    )
+    items = response.get("items", [])
+    logger.info(f"countskus{len(items)}")
+    return {item["id"]: item["sku"] for item in items  if item.get("type_id") != "configurable"}
+    
+        
+@tool(args_schema=LowStockAlertInput)
+async def low_stock_alert(threshold: float = 10.0, scope_id: int = 0, page_size: int = 100) -> List[Dict]:
+    """
+    Retrieve SKUs with inventory below the specified threshold using Magento's lowStock endpoint.
+
+    Args:
+        threshold: Stock quantity threshold (default 10).
+        scope_id: Website scope ID (default 0).
+        page_size: Number of items per page (default 100).
+
+    Returns:
+        List of product SKUs with low stock.
+    """
+    try:
+        all_items = []
+        current_page = 1
+        page_size = 100
+
+        while True:
+            endpoint = (
+                f"stockItems/lowStock"
+                f"?qty={threshold}&scopeId={scope_id}&pageSize={page_size}&currentPage={current_page}"
+            )
+
+            response = magento_client.send_request(endpoint=endpoint, method="GET")
+            low_stock_items = response.get("items", [])
+            all_items.extend(low_stock_items)
+            total_count = response.get("total_count", 0)
+            if len(all_items) >= total_count:
+                break
+            current_page += 1
+
+        product_ids = [item["product_id"] for item in all_items]
+        id_to_sku = get_product_skus_by_ids(product_ids)
+        logger.info(f"id_to_sku:{len(id_to_sku)}")
+        logger.info(f"id_to_sku:{id_to_sku}")
+        ll_results = []
+        for item in all_items:
+            pid = item["product_id"]
+            if pid not in id_to_sku:
+                continue
+            ll_results.append({
+                "sku": id_to_sku.get(pid, "SKU"),
+                "qty": item.get("qty"),
+                "notify_stock_qty": item.get("notify_stock_qty")
+            })
+        logger.info(f"id_to_sku1:{ll_results}")
+        return ll_results
+
+    except Exception as e:
+        return {"error": f"Failed to retrieve low stock products: {str(e)}"}
+
 
             
-tools=[view_product,update_stock_qty,search_products,list_all_categories,create_category,update_product,create_product,assign_product_to_categories]     
+tools=[low_stock_alert,view_product,update_stock_qty,search_products,list_all_categories,create_category,update_product,create_product,assign_product_to_categories]     
