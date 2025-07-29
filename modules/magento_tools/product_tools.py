@@ -347,7 +347,7 @@ def get_product_skus_by_ids(product_ids: List[int]) -> List[Dict]:
     )
     items = response.get("items", [])
     logger.info(f"countskus{len(items)}")
-    return {item["id"]: item["sku"] for item in items  if item.get("type_id") != "configurable"}
+    return {item["id"]: item["sku"] for item in items  if item.get("type_id") not in {"configurable", "bundle", "grouped"}}
     
         
 @tool(args_schema=LowStockAlertInput)
