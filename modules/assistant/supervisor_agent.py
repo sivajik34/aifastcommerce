@@ -1,27 +1,29 @@
 """
 Supervisor Multi-Agent Workflow for E-commerce Assistant
 """
+import os
 import logging
-from typing import List
-from typing_extensions import TypedDict
-from langchain_core.messages import BaseMessage, HumanMessage,SystemMessage
 from langgraph.prebuilt import create_react_agent
 from langgraph_supervisor import create_supervisor
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
+from dotenv import load_dotenv
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.store.memory import InMemoryStore
+
 from modules.llm.factory import get_llm_strategy
 from utils.log import Logger
 from modules.magento_tools.utility_tools import tools as utiltools
 from modules.magento_tools.product_tools import tools as producttools
 from modules.magento_tools.customer_tools import tools as customertools
 from modules.magento_tools.sales_tools import tools as salestools
-import os
-from dotenv import load_dotenv
+
+
+checkpointer = InMemorySaver() #short term
+store = InMemoryStore() #long term
 
 
 logger=Logger(name="supervisor", log_file="Logs/app.log", level=logging.DEBUG)
-
-
 
 load_dotenv()
 embeddings = OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY"))
@@ -31,12 +33,6 @@ retriever = FAISS.load_local(
     embeddings,
     allow_dangerous_deserialization=True
 ).as_retriever(search_type="similarity", k=4)
-
-# --- State Definition ---
-class AgentState(TypedDict):
-    messages: List[BaseMessage]
-    user_input: str
-    session_id: str  
 
 # --- Agent Configuration ---
 class AgentConfig:
@@ -66,8 +62,7 @@ catalog_agent=create_react_agent(
             
             Always be helpful and provide detailed product information when available.
             If you can't find what the user is looking for, suggest alternatives or ask for clarification."""
-            )
-        
+            )        
         
 
 customer_agent=create_react_agent(
@@ -94,6 +89,7 @@ customer_agent=create_react_agent(
             Be professional and ensure data privacy and security."""
         )
 
+
 sales_agent=create_react_agent(
             config.llm, 
             salestools+utiltools,
@@ -119,6 +115,7 @@ sales_agent=create_react_agent(
             Payment methods available: checkmo, banktransfer, cashondelivery
             Always verify product availability and customer details before processing orders."""
         )
+
  
 general_agent=create_react_agent(
             config.llm, 
@@ -148,6 +145,7 @@ general_agent=create_react_agent(
             - Customer accounts (creation, information)
             - Orders (placing orders, order status)"""
             )
+
 rag_agent = create_react_agent(
     config.llm,
     utiltools,
@@ -171,54 +169,44 @@ Always answer using the document information provided. If no good match is found
 # --- Build Workflow Graph ---
 def create_supervisor_workflow():
     """Create the supervisor multi-agent workflow"""    
-   
+    
     workflow = create_supervisor(
         [catalog_agent, customer_agent,sales_agent,general_agent],
         model=config.llm,
-        prompt= """You are a supervisor for an e-commerce assistant system.
+        
+        prompt = """You are a supervisor for an e-commerce assistant system.
 
         Available Agents:
         1. CATALOG_AGENT: Handles product searches, viewing product details, inventory queries, creation of product and category
         2. CUSTOMER_AGENT: Manages customer information, account creation, customer queries  
         3. SALES_AGENT: Processes orders, order creation, order management
-        4. GENERAL_AGENT: Handles general queries, greetings, help requests
-        
+        4. GENERAL_AGENT: Handles general queries, greetings, help requests        
 
         Analyze the user's message and determine which agent should handle the request.
         If the task is complete or the user says goodbye, return FINISH.
         
-        """
-    )
-
+        """)
     # Compile and run
-    return workflow.compile()   
-    
+    return workflow.compile(checkpointer=checkpointer,
+    store=store)
+# Compile graph (supervisor already handles message history internally)
+overall_workflow = create_supervisor_workflow().with_config({"recursion_limit": 30})
 
-# --- Main Workflow Instance ---
-overall_workflow = create_supervisor_workflow()
-
-# --- Utility Functions ---
-def create_initial_state(
-    user_input: str, 
-    session_id: str, 
-    existing_messages: List[BaseMessage] = None
-) -> AgentState:
-    """Create initial state for the workflow"""
-    if existing_messages is None:
-        existing_messages = [HumanMessage(content=user_input)]
-       
-    
-    return AgentState(
-        messages=existing_messages,
-        user_input=user_input,
-        session_id=session_id        
-    )
-
-async def run_workflow(user_input: str, session_id: str, existing_messages: List[BaseMessage] = None):
+async def run_workflow(user_input: str, session_id: str):
     """Run the complete workflow with user input"""
-    initial_state = create_initial_state(user_input, session_id, existing_messages)
-    result = await overall_workflow.ainvoke(initial_state)
+    logger.info(f"user_input:{user_input}")
+    result = await overall_workflow.ainvoke(
+        {
+    "messages": [
+        {
+            "role": "user",
+            "content": user_input
+        }
+    ]
+},
+        config={"configurable": {"thread_id": session_id}}
+    )
     return result
 
 # --- Export for routes.py integration ---
-__all__ = ["overall_workflow", "AgentState", "create_initial_state", "run_workflow"]
+__all__ = ["overall_workflow", "run_workflow"]

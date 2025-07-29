@@ -1,13 +1,10 @@
 """
 FastAPI routes for the assistant module
 """
-import os
-import psycopg
 import logging
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from langchain_core.messages import AIMessage, HumanMessage
-from langchain_postgres import PostgresChatMessageHistory
 
 from .schema import ChatRequest, ChatResponse
 from .supervisor_agent import run_workflow
@@ -18,13 +15,6 @@ logger=Logger(name="agent_routes", log_file="Logs/app.log", level=logging.DEBUG)
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
 
-def get_message_history(session_id: str):
-    """Create a Postgres-backed message history object"""
-    return PostgresChatMessageHistory(
-        "chat_message_history",
-        session_id,
-        sync_connection=psycopg.connect(os.getenv("CON_STR"))
-    )
 
 def is_useful_message(msg):
     if isinstance(msg, AIMessage):
@@ -86,47 +76,14 @@ async def chat_with_agent(request: ChatRequest):
             raise HTTPException(status_code=400, detail="session_id is required")
         
         logger.info(f"💬 Processing chat for user {session_id}: {request.message[:50]}...")
-
-        # Load existing chat history from PostgreSQL
-        #previous_messages = await chat_history_manager.get_recent_messages(
-        #    str(session_id), 
-        #    limit=20  # Keep last 20 messages for context
-        #)
-        history  = get_message_history(session_id)
-
-        previous_messages = history.messages
-        
-        logger.info(f"📚 Loaded {len(previous_messages)} previous messages")        
-
         # Run the agent workflow
         logger.info("🚀 Starting agent workflow...")
-
-        result=await run_workflow(request.message, str(session_id), previous_messages+ [HumanMessage(content=request.message)])
+        result =  await run_workflow(request.message, str(session_id))
         logger.debug(f"🧪 Raw result from workflow: {result}")        
         
         # Extract the new messages that were added during this interaction
         result_messages = result.get("messages", [])
         updated_messages = [msg for msg in result_messages if is_useful_message(msg)]
-        #memory.save_context({"input": user_input}, {"output": extract_response_text(useful_messages)})
-        new_messages = updated_messages[len(previous_messages):]
-        
-        logger.info(f"📤 Generated {len(new_messages)} new messages")
-
-        # Save new messages to PostgreSQL
-        #if new_messages:
-        #    await chat_history_manager.add_messages(str(session_id), new_messages)
-        #    logger.info("💾 Saved new messages to database")
-
-        if new_messages:
-            # Save user message first
-            history.add_user_message(request.message)
-
-            # Then save each AI message
-            for msg in new_messages:
-                if isinstance(msg, AIMessage):
-                    history.add_ai_message(msg.content)
-            logger.info("💾 Saved new messages to Postgres")
-
         # Extract response for the user
         response_text = extract_response_text(updated_messages)
         
