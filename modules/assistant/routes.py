@@ -26,46 +26,41 @@ from langchain_core.messages import AIMessage
 
 def extract_final_response(result) -> str:
     """
-    Extracts the final meaningful AIMessage from the LangGraph result.
-    Prefers messages from agents with names ending in '_agent'.
+    Extracts the most recent meaningful AIMessage from the LangGraph result.
+    Prefers *_agent messages with informative, user-facing content.
     """
     messages = result.get("messages", [])
 
-    def is_clean_user_facing(msg: AIMessage) -> bool:
+    def is_meaningful(msg: AIMessage) -> bool:
+        if not isinstance(msg, AIMessage) or not msg.content:
+            return False
         content = msg.content.strip().lower()
         return (
-            msg.content
-            and not msg.tool_calls
+            not msg.tool_calls
             and "transferred" not in content
             and not content.startswith("transferring")
+            and not content.startswith("if you have any further")
             and not content.startswith("i have successfully")
         )
 
-    # Step 1: Find all AI messages from *_agent
-    candidates = [
-        m.content.strip()
-        for m in messages
-        if isinstance(m, AIMessage)
-        and re.match(r".*_agent$", getattr(m, "name", ""))
-        and is_clean_user_facing(m)
-    ]
+    # Step 1: Recent meaningful *_agent message
+    for msg in reversed(messages):
+        if (
+            isinstance(msg, AIMessage)
+            and re.match(r".*_agent$", getattr(msg, "name", ""))
+            and is_meaningful(msg)
+        ):
+            return msg.content.strip()
 
-    if candidates:
-        return max(candidates, key=len)
+    # Step 2: Any recent meaningful AI message
+    for msg in reversed(messages):
+        if is_meaningful(msg):
+            return msg.content.strip()
 
-    # Step 2: Fallback to any meaningful AI message
-    fallback_candidates = [
-        m.content.strip()
-        for m in messages
-        if isinstance(m, AIMessage) and is_clean_user_facing(m)
-    ]
-    if fallback_candidates:
-        return max(fallback_candidates, key=len)
-
-    # Step 3: Fallback to last assistant message
-    for m in reversed(messages):
-        if isinstance(m, AIMessage) and m.content:
-            return m.content.strip()
+    # Step 3: Fallback to last assistant message with content
+    for msg in reversed(messages):
+        if isinstance(msg, AIMessage) and msg.content:
+            return msg.content.strip()
 
     return "No meaningful response found."
 

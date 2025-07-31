@@ -206,7 +206,7 @@ def create_order_for_guest(
         return {"error": f"Failed to create guest order: {str(e)}"}
 
 
-@tool(args_schema=GetOrderByIncrementIdInput,return_direct=True)
+@tool(args_schema=GetOrderByIncrementIdInput)
 def get_order_info_by_increment_id(increment_id: str) -> dict:
     """Get full order details using the order increment ID (like 000000123)."""
 
