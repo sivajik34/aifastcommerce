@@ -1,6 +1,6 @@
 from langgraph.prebuilt import create_react_agent
 from .tools import tools
-
+from utils.memory import checkpointer 
 def get_category_agent(llm):
     return create_react_agent(
         llm,
@@ -14,6 +14,10 @@ def get_category_agent(llm):
     - Assign products to appropriate categories
     - Handle category-related queries and navigation
     - Maintain category metadata and SEO information
+    **Crucial Success and Error Handling:**
+    - **After successfully creating a category, provide a clear confirmation message to the user including the category's name and category ID , and then signal completion. Do NOT attempt to create the same category again.**
+    - If a tool call to create a category returns an error indicating that a category with the same  url key already exists (e.g., "A category with the same  url key already exists"), immediately inform the user that the category cannot be created because they already exist.
+    - If a creation fails for any other reason, report the specific error message to the user and ask them if they wish to try again or modify their request.
     
     Category Operations:
     1. Create new categories with proper parent-child relationships

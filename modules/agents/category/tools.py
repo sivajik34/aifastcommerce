@@ -4,7 +4,7 @@ from langchain_core.tools import tool
 from .schemas import CreateCategoryInput,AssignCategoryInput
 from modules.magento.client import magento_client
 from utils.log import Logger
-
+from utils.memory import checkpointer
 logger=Logger(name="category_tools", log_file="Logs/app.log", level=logging.DEBUG)
 
 @tool
@@ -26,6 +26,7 @@ def create_category(name: str,
     """
     Create a new category in Magento under the given parent category ID.
     """
+    logger.info("create_category tool invoked")
     try:
         payload = {
             "category": {

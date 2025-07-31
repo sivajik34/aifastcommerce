@@ -40,4 +40,4 @@ def get_customer_team(llm, agents):
     - Coordinate with other teams when customer issues affect orders or products
     """,
         output_mode="full_history"
-    ).compile(checkpointer=checkpointer, store=store, name="customer_team")
+    ).compile( name="customer_team")

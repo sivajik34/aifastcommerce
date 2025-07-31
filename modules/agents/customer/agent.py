@@ -1,5 +1,6 @@
 from langgraph.prebuilt import create_react_agent
-from .tools import tools 
+from .tools import tools
+from utils.memory import checkpointer 
 
 def get_customer_agent(llm):
     return create_react_agent(
@@ -15,6 +16,12 @@ def get_customer_agent(llm):
     - Process customer authentication and account security
     - Handle customer inquiries and account-related issues
     - Manage customer groups and segmentation
+    - to create orders use order_agent from sales_team.DO NOT try to use this.
+
+    **Crucial Success and Error Handling:**
+    - **After successfully creating a customer, provide a clear confirmation message to the user including the customer's name and email, and then signal completion. Do NOT attempt to create the same customer again.**
+    - If a tool call to create a customer returns an error indicating that a customer with the same email already exists (e.g., "A customer with the same email address already exists"), immediately inform the user that the customer cannot be created because they already exist. Then, use the `get_customer_info` tool to retrieve and display the existing customer's details to the user and signal completion.
+    - If a creation fails for any other reason, report the specific error message to the user and ask them if they wish to try again or modify their request.
     
     Customer Operations:
     1. Registration: Create new customer accounts with required information

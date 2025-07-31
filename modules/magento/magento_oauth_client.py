@@ -10,6 +10,10 @@ from typing import List, Optional, Dict, Any,Union
 
 import logging
 from utils.log import Logger
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 logger=Logger(name="magento_oauth_client", log_file="Logs/app.log", level=logging.DEBUG)
 
 class MagentoOAuthClient:
@@ -156,6 +160,7 @@ class MagentoOAuthClient:
             formatted_endpoint = self.build_endpoint(endpoint, store_view_code, api_version)
             full_url = urljoin(self.base_url.rstrip('/') + '/', formatted_endpoint.lstrip('/'))
             logger.info(full_url)
+            logger.info(json_data)
             
             # Make the request with OAuth1 authentication
             response = self.session.request(
@@ -164,7 +169,7 @@ class MagentoOAuthClient:
                 json=json_data,
                 headers=headers,
                 timeout=self.timeout,
-                verify=extra_options.get('verify', self.verify_ssl),
+                verify=False, #extra_options.get('verify', self.verify_ssl),
                 auth=None if 'Authorization' in headers else self.oauth
             )
             try:

@@ -21,6 +21,7 @@ def view_product(sku: str):
         Product details including name, current price, and available stock quantity.
         Use this before adding items to cart or when users ask about specific products.
     """
+    logger.info("view_product tool invoked")
     try:        
         endpoint = f"products/{sku}"
         product=magento_client.send_request(endpoint=endpoint, method="GET")
@@ -50,6 +51,7 @@ def search_products(
     limit: Optional[int] = 10
 ):
     """Search for products based on query, price, category and sort filters."""
+    logger.info("search_products tool invoked")
     try:
         filters = []
         if query:
@@ -127,6 +129,7 @@ def create_product(
         A confirmation with product ID and SKU if created successfully.
     """
     try:
+        logger.info("create_product tool invoked")
         payload = {
             "product": {
                 "sku": sku,
@@ -146,7 +149,7 @@ def create_product(
             }
         }
         response = magento_client.send_request("products", method="POST", data=payload)
-        return {"product_id": response.get("id"), "sku": response.get("sku")}
+        return {"product_id": response.get("id"), "sku": response.get("sku"),"status":"success","message": f"Product {name} ({sku}) created successfully."}
     except Exception as e:
         return {"error": f"Failed to create product: {str(e)}"} 
 

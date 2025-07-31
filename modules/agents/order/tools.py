@@ -206,7 +206,7 @@ def create_order_for_guest(
         return {"error": f"Failed to create guest order: {str(e)}"}
 
 
-@tool(args_schema=GetOrderByIncrementIdInput)
+@tool(args_schema=GetOrderByIncrementIdInput,return_direct=True)
 def get_order_info_by_increment_id(increment_id: str) -> dict:
     """Get full order details using the order increment ID (like 000000123)."""
 
@@ -220,7 +220,22 @@ def get_order_info_by_increment_id(increment_id: str) -> dict:
         endpoint = f"orders?{query_string}"
         response = magento_client.send_request(endpoint, method="GET")
         if response.get("items"):
-            return response["items"][0]
+            order = response["items"][0]
+            customer = f"{order['customer_firstname']} {order['customer_lastname']}"
+            items = [
+                f"- {item['name']} (SKU: {item['sku']}), Qty: {item['qty_ordered']}, Price: ${item['price']}"
+                for item in order["items"]
+            ]
+            shipping = order.get("shipping_address", {})
+            shipping_address = f"{shipping.get('firstname', '')} {shipping.get('lastname', '')}, {shipping.get('street', [''])[0]}, {shipping.get('city', '')}, {shipping.get('postcode', '')}"
+            return f"""✅ Order #{order['increment_id']} Details:
+- Customer: {customer} ({order['customer_email']})
+- Status: {order['status']}
+- Total: ${order['grand_total']}
+- Created At: {order['created_at']}
+- Shipping Address: {shipping_address}
+- Items:
+{chr(10).join(items)}"""
         else:
             raise Exception(f"No order found with increment ID {increment_id}")
     except Exception as e:

@@ -1,6 +1,6 @@
 from langgraph.prebuilt import create_react_agent
 from .tools import tools
-
+from utils.memory import checkpointer
 def get_order_agent(llm):
     return create_react_agent(
         llm,
@@ -9,6 +9,7 @@ def get_order_agent(llm):
         prompt="""You are an order processing specialist for an e-commerce platform.
         
     Your responsibilities:
+    - Get order information using order increment id and show me in proper format with all information.
     - Create orders for registered customers and guest users
     - Validate customer information and product availability before processing orders
     - Handle payment method selection and order confirmation

@@ -1,13 +1,16 @@
 from langgraph.prebuilt import create_react_agent
 from .tools import tools
 from modules.magento_tools.shared_order_tools import tools as order_tools
-
+from utils.memory import checkpointer
 def get_invoice_agent(llm):
     return create_react_agent(
         llm,
         tools+order_tools,
         name="invoice_agent",
         prompt="""You are an invoice processing specialist for an e-commerce platform.
+    Before creating ANY invoice:
+    1. If required call get_order_info_by_increment_id(order_increment_id) tool 
+    first to get complete order information such as order_item_id and qty      
 
     Your responsibilities:
     - Generate invoices for confirmed orders
@@ -34,9 +37,6 @@ def get_invoice_agent(llm):
     - "Generate invoice for order #12345"
     - "Process refund for invoice #INV789"
     - "Update billing address for invoice #INV456"
-
-    Before creating ANY invoice:
-    1. If required call get_order_info_by_increment_id(order_increment_id) first to get complete order information   
     
     """
     )

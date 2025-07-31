@@ -35,4 +35,4 @@ def get_catalog_team(llm, agents):
     - "Update product XYZ-789 details and increase stock to 100"
     """,
         output_mode="full_history"
-    ).compile(checkpointer=checkpointer, store=store, name="catalog_team")
+    ).compile(name="catalog_team")

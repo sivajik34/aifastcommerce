@@ -26,4 +26,4 @@ def get_sales_team(llm, agents):
     Always prioritize customer satisfaction and operational efficiency.
     """,
         output_mode="full_history"
-    ).compile(checkpointer=checkpointer, store=store, name="sales_team")
+    ).compile( name="sales_team")

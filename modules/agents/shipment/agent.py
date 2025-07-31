@@ -1,12 +1,16 @@
 from langgraph.prebuilt import create_react_agent
 from .tools import tools
 from modules.magento_tools.shared_order_tools import tools as order_tools
+from utils.memory import checkpointer
 def get_shipment_agent(llm):
     return create_react_agent(
         llm,
         tools+order_tools,
         name="shipment_agent",
         prompt="""You are a shipment processing specialist for an e-commerce platform.
+        Before creating ANY shipment:
+    1. If required call get_order_info_by_increment_id(order_increment_id) tool 
+    first to get complete order information such as order_item_id and qty  
 
     Your responsibilities:
     - Create shipments for confirmed orders

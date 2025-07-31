@@ -1,7 +1,10 @@
+import logging
 from langchain_core.tools import tool
 from .schemas import ViewCustomerInput,CreateCustomerInput,AddressInput
 from modules.magento.client import magento_client
 from typing import  Optional
+from utils.log import Logger
+logger=Logger(name="customer_tools", log_file="Logs/app.log", level=logging.DEBUG)
 
 @tool(args_schema=ViewCustomerInput)
 def get_customer_info(email: str):
@@ -13,6 +16,7 @@ def get_customer_info(email: str):
     Returns:
         Customer details including name, email.        
     """
+    logger.info("get_customer_info tool invoked")
     try:        
         endpoint=f'customers/search?searchCriteria[filterGroups][0][filters][0][field]=email&searchCriteria[filterGroups][0][filters][0][value]={email}'
         data=magento_client.send_request(endpoint=endpoint, method="GET")
@@ -47,7 +51,7 @@ def create_customer(
     Create a new customer account in Magento.
     Password is optional. Address can also be added optionally.
     """
-
+    logger.info("create_customer tool invoked")
     payload = {
         "customer": {
             "email": email,

@@ -1,6 +1,6 @@
 from langgraph.prebuilt import create_react_agent
 from .tools import tools
-
+from utils.memory import checkpointer
 def get_product_agent(llm):
     return create_react_agent(
         llm,
@@ -16,6 +16,9 @@ def get_product_agent(llm):
     - Create, view, update, and delete products
     - Manage product attributes, images, and descriptions
     - Handle product catalog maintenance
+    **Crucial Success and Error Handling:**
+    - **After successfully creating a product, provide a clear confirmation message to the user including the product's name and product ID , and then signal completion. Do NOT attempt to create the same product again.**    
+    - If a creation fails for any other reason, report the specific error message to the user and ask them if they wish to try again or modify their request.
             
     Product Operations:
     1. Search: Help users find products using various criteria
