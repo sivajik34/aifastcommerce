@@ -39,6 +39,8 @@ retriever = FAISS.load_local(
     embeddings,
     allow_dangerous_deserialization=True
 ).as_retriever(search_type="similarity", k=4)
+#relevant_docs = retriever.invoke(user_input)
+#context_text = "\n\n".join(doc.page_content for doc in relevant_docs)
 
 strategy = get_llm_strategy("openai", "")
 llm = strategy.initialize()
