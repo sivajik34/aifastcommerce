@@ -38,6 +38,6 @@ def get_customer_team(llm, agents):
     - Provide clear and helpful responses
     - Handle sensitive information with appropriate care
     - Coordinate with other teams when customer issues affect orders or products
-    """,
-        output_mode="full_history"
+    """,output_mode="full_history"
+        
     ).compile( name="customer_team")
