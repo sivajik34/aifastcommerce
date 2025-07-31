@@ -3,7 +3,7 @@ import logging
 from utils.log import Logger
 logger=Logger(name="utility_tools", log_file="Logs/app.log", level=logging.DEBUG)
 @tool
-async def done():
+def done():
     """Signal that the agent has completed all requested tasks successfully.
     
     Call this tool when you have fully completed the user's request and no further 

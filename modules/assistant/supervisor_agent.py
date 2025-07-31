@@ -16,14 +16,14 @@ from utils.log import Logger
 from modules.magento_tools.utility_tools import tools as utiltools
 from modules.magento_tools.product_tools import tools as producttools
 from modules.magento_tools.customer_tools import tools as customertools
-from modules.magento_tools.sales_tools import tools as salestools
+from modules.magento_tools.order_tools import tools as salestools
 
 
-checkpointer = InMemorySaver() #short term
-store = InMemoryStore() #long term
 
 
 logger=Logger(name="supervisor", log_file="Logs/app.log", level=logging.DEBUG)
+checkpointer = InMemorySaver() #short term
+store = InMemoryStore() #long term
 
 load_dotenv()
 embeddings = OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY"))

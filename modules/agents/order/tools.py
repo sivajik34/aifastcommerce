@@ -1,15 +1,15 @@
-from langchain_core.tools import tool
-from .schemas import CreateOrderInput,OrderItem,InvoiceInput,InvoiceItem,ShipmentItem,ShipmentInput,GetOrderByIncrementIdInput,GetOrderIdInput,CancelOrderInput,GetOrdersInput
-from .client import magento_client
-from typing import  List
 import logging
-from utils.log import Logger
-from typing import Optional
+from typing import  List,Optional
 from datetime import datetime, timedelta
-logger=Logger(name="sales_tools", log_file="Logs/app.log", level=logging.DEBUG)
+from langchain_core.tools import tool
+from .schemas import CreateOrderInput,OrderItem,GetOrderByIncrementIdInput,GetOrderIdInput,CancelOrderInput,GetOrdersInput
+from modules.magento.client import magento_client
+from utils.log import Logger
+
+logger=Logger(name="order_tools", log_file="Logs/app.log", level=logging.DEBUG)
 
 @tool(args_schema=CreateOrderInput)
-async def create_order_for_customer(
+def create_order_for_customer(
     customer_email: str,
     firstname: str,
     lastname: str,
@@ -112,7 +112,7 @@ async def create_order_for_customer(
         return {"error": f"Failed to create order: {str(e)}"}
 
 @tool(args_schema=CreateOrderInput)
-async def create_order_for_guest(
+def create_order_for_guest(
     customer_email: str,
     firstname: str,
     lastname: str,
@@ -205,75 +205,8 @@ async def create_order_for_guest(
         logger.error(f"Error placing guest order: {str(e)}")
         return {"error": f"Failed to create guest order: {str(e)}"}
 
-@tool(args_schema=InvoiceInput)
-async def create_invoice(order_id: int, items: List[InvoiceItem], comment: str = "Invoice created", notify: bool = True):
-    """
-    Create an invoice for a Magento order.
-    """
-    try:
-        payload = {
-            "capture": True,
-            "items": [
-                {
-                    "order_item_id": item.order_item_id,
-                    "qty": item.qty,
-                    "extension_attributes": {}
-                }
-                for item in items
-            ],
-            "notify": notify,
-            "appendComment": True,
-            "comment": {
-                "comment": comment,
-                "is_visible_on_front": 0,
-                "extension_attributes": {}
-            },
-            "arguments": {
-                "extension_attributes": {}
-            }
-        }
 
-        invoice_response = magento_client.send_request(
-            endpoint=f"order/{order_id}/invoice",
-            method="POST",
-            data=payload
-        )
-        return {"invoice_id": invoice_response}
-    except Exception as e:
-        logger.error(f"Error creating invoice: {str(e)}")
-        return {"error": str(e)}
-
-@tool(args_schema=ShipmentInput)
-def create_shipment(order_id: int, items: List[ShipmentItem], notify: bool = True,
-                    carrier_code: str = "custom", track_number: str = "N/A", title: str = "Standard Shipping"):
-    """Create a shipment for an order. Provide order_id and items (order_item_id, qty)."""
-    logger.info(f"🚚 Creating shipment for order_id={order_id} with items={items}")
-    payload = {
-        "items": [item.dict() for item in items],
-        "notify": notify,
-        "appendComment": True,
-        "comment": {
-            "comment": "Auto-generated shipment",
-            "is_visible_on_front": 0
-        },
-        "tracks": [{
-            "track_number": track_number,
-            "title": title,
-            "carrier_code": carrier_code
-        }],
-        "packages": [],
-        "arguments": {
-            "extension_attributes": {
-                "source_code": "default"
-            }
-        }
-    }
-    
-    result = magento_client.send_request(f"order/{order_id}/ship", method="POST",data=payload)
-    return result
-
-
-@tool(args_schema=GetOrderByIncrementIdInput)
+@tool(args_schema=GetOrderByIncrementIdInput,return_direct=True)
 def get_order_info_by_increment_id(increment_id: str) -> dict:
     """Get full order details using the order increment ID (like 000000123)."""
 
@@ -287,7 +220,22 @@ def get_order_info_by_increment_id(increment_id: str) -> dict:
         endpoint = f"orders?{query_string}"
         response = magento_client.send_request(endpoint, method="GET")
         if response.get("items"):
-            return response["items"][0]
+            order = response["items"][0]
+            customer = f"{order['customer_firstname']} {order['customer_lastname']}"
+            items = [
+                f"- {item['name']} (SKU: {item['sku']}), Qty: {item['qty_ordered']}, Price: ${item['price']}"
+                for item in order["items"]
+            ]
+            shipping = order.get("shipping_address", {})
+            shipping_address = f"{shipping.get('firstname', '')} {shipping.get('lastname', '')}, {shipping.get('street', [''])[0]}, {shipping.get('city', '')}, {shipping.get('postcode', '')}"
+            return f"""✅ Order #{order['increment_id']} Details:
+- Customer: {customer} ({order['customer_email']})
+- Status: {order['status']}
+- Total: ${order['grand_total']}
+- Created At: {order['created_at']}
+- Shipping Address: {shipping_address}
+- Items:
+{chr(10).join(items)}"""
         else:
             raise Exception(f"No order found with increment ID {increment_id}")
     except Exception as e:
@@ -398,7 +346,6 @@ def get_orders(status: Optional[str] = None,
             "total_count": response.get("total_count", 0)
         }
     except Exception as e:
-        return {"error": str(e)} 
-
+        return {"error": str(e)}
             
-tools=[get_orders,create_order_for_customer,create_order_for_guest,create_invoice,create_shipment,get_order_info_by_increment_id,get_order_id_by_increment,cancel_order]    
+tools=[get_orders,create_order_for_customer,create_order_for_guest,get_order_info_by_increment_id,get_order_id_by_increment,cancel_order]

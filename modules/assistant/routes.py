@@ -4,10 +4,11 @@ FastAPI routes for the assistant module
 import logging
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage,ToolMessage
 
 from .schema import ChatRequest, ChatResponse
-from .supervisor_agent import run_workflow
+#from .supervisor_agent import run_workflow
+from .hierarchical_agent import run_workflow
 from .chat_history import chat_history_manager
 from utils.log import Logger
 
@@ -16,54 +17,63 @@ logger=Logger(name="agent_routes", log_file="Logs/app.log", level=logging.DEBUG)
 router = APIRouter(prefix="/assistant", tags=["assistant"])
 
 
-def is_useful_message(msg):
-    if isinstance(msg, AIMessage):
-        if msg.name == "supervisor":
-            return False
-        if msg.content and msg.content.strip().lower().startswith("transferring"):
-            return False
-        if "request should be handled" in msg.content.lower():
-            return False
-    return True
 
-def extract_response_text(messages) -> str:
+
+from langchain_core.messages import AIMessage, ToolMessage, BaseMessage
+
+import re
+from langchain_core.messages import AIMessage
+
+def extract_final_response(result) -> str:
     """
-    Extract the most relevant AI message that is:
-    - Not from the 'supervisor' agent
-    - Not a system-like handoff message (e.g., "Transferring to...")
-    - Has actual content
+    Extracts the final meaningful AIMessage from the LangGraph result.
+    Prefers messages from agents with names ending in '_agent'.
     """
-    # Step 1: Filter AI messages with meaningful content
-    candidate_msgs = [
-        msg for msg in messages
-        if isinstance(msg, AIMessage)
-        and msg.name != "supervisor"
-        and msg.content
-        and not msg.content.strip().lower().startswith("transferring")
-        and not msg.content.strip().lower().startswith("request was handled by")
+    messages = result.get("messages", [])
+
+    def is_clean_user_facing(msg: AIMessage) -> bool:
+        content = msg.content.strip().lower()
+        return (
+            msg.content
+            and not msg.tool_calls
+            and "transferred" not in content
+            and not content.startswith("transferring")
+            and not content.startswith("i have successfully")
+        )
+
+    # Step 1: Find all AI messages from *_agent
+    candidates = [
+        m.content.strip()
+        for m in messages
+        if isinstance(m, AIMessage)
+        and re.match(r".*_agent$", getattr(m, "name", ""))
+        and is_clean_user_facing(m)
     ]
 
-    if candidate_msgs:
-        return candidate_msgs[-1].content.strip()
+    if candidates:
+        return max(candidates, key=len)
 
-    # Step 2: Fallback to last non-empty AI message
-    for msg in reversed(messages):
-        if isinstance(msg, AIMessage) and msg.content:
-            return msg.content.strip()
+    # Step 2: Fallback to any meaningful AI message
+    fallback_candidates = [
+        m.content.strip()
+        for m in messages
+        if isinstance(m, AIMessage) and is_clean_user_facing(m)
+    ]
+    if fallback_candidates:
+        return max(fallback_candidates, key=len)
 
-    # Step 3: Nothing found
-    return "I'm here to help! Please ask your question again."
+    # Step 3: Fallback to last assistant message
+    for m in reversed(messages):
+        if isinstance(m, AIMessage) and m.content:
+            return m.content.strip()
 
-def extract_products_from_messages(messages) -> list:
-    """Extract product information mentioned in the conversation."""
-    products = []
-    # This could be enhanced to parse tool results and extract product data
-    # For now, returning empty list - can be implemented based on specific needs
-    return products
+    return "No meaningful response found."
+
+
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat_with_agent(request: ChatRequest):
+def chat_with_agent(request: ChatRequest):
     """
     Main chat endpoint for the ecommerce assistant.
     
@@ -78,24 +88,22 @@ async def chat_with_agent(request: ChatRequest):
         logger.info(f"💬 Processing chat for user {session_id}: {request.message[:50]}...")
         # Run the agent workflow
         logger.info("🚀 Starting agent workflow...")
-        result =  await run_workflow(request.message, str(session_id))
+        result = run_workflow(request.message, str(session_id))
         logger.debug(f"🧪 Raw result from workflow: {result}")        
         
         # Extract the new messages that were added during this interaction
         result_messages = result.get("messages", [])
-        updated_messages = [msg for msg in result_messages if is_useful_message(msg)]
-        # Extract response for the user
-        response_text = extract_response_text(updated_messages)
+        #logger.info(f"result_messages:{result_messages}")
+        for m in result_messages:
+            m.pretty_print()
+        response_text = extract_final_response(result)      
         
-        # Extract any product information (for frontend integration)
-        products = extract_products_from_messages(updated_messages)
 
         logger.info(f"✅ Response ready: {response_text[:50]}...")
 
         return ChatResponse(
-            response=response_text,
-            products=products,
-            message_count=len(updated_messages)
+            response=response_text,            
+            #message_count=len(updated_messages)
         )
 
     except HTTPException:
