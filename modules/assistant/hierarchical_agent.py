@@ -3,7 +3,6 @@ import logging
 from dotenv import load_dotenv
 from langgraph.types import Command
 from langchain_core.messages import HumanMessage, trim_messages,AIMessage
-from langchain_core.messages import BaseMessage
 from typing_extensions import TypedDict
 from langchain_openai import ChatOpenAI
 from langchain_openai import OpenAIEmbeddings

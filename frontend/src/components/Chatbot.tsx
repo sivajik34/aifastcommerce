@@ -1,23 +1,13 @@
 import React, { useState, useEffect, useRef } from "react";
 
-// Updated interface to match backend ProductInfo schema
-interface Product {
-  product_id: number;
-  name: string;
-  price: number;
-  stock: number;
-  status: string;
-}
-
 interface Message {
   from: "user" | "bot" | "system";
   text: string;
-  products?: Product[];
 }
 
 // Generate a valid UUID v4 for the session
 function generateUserId(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
     const r = Math.random() * 16 | 0;
     const v = c === 'x' ? r : (r & 0x3 | 0x8);
     return v.toString(16);
@@ -30,7 +20,11 @@ export default function Chatbot() {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [userId] = useState(() => generateUserId()); // Generate once per session
+  const [userId] = useState(() => generateUserId());
+  const [pendingAction, setPendingAction] = useState<null | {
+    type: string;
+    args: Record<string, any>;
+  }>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -41,7 +35,6 @@ export default function Chatbot() {
     if (!input.trim()) return;
     const userMessage = input.trim();
 
-    // Update UI immediately
     setMessages((msgs) => [...msgs, { from: "user", text: userMessage }]);
     setInput("");
     setIsLoading(true);
@@ -59,7 +52,6 @@ export default function Chatbot() {
       const data = await response.json();
 
       if (response.status === 500 && data.error) {
-        // Handle server errors gracefully
         throw new Error(data.error);
       }
 
@@ -67,10 +59,16 @@ export default function Chatbot() {
         throw new Error(`HTTP ${response.status}: ${data.detail || 'Request failed'}`);
       }
 
+      // If there's an interruption, prompt user for action
+      if (data.interruption) {
+        setPendingAction(data.interruption);
+        setMessages((msgs) => [...msgs, { from: "system", text: data.response }]);
+        return;
+      }
+
       const newBotMessage: Message = {
         from: "bot",
-        text: data.response || "No response received.",
-        products: data.products || [],
+        text: data.response || "No response received."
       };
 
       setMessages((msgs) => [...msgs, newBotMessage]);
@@ -84,6 +82,38 @@ export default function Chatbot() {
           text: `Sorry, something went wrong: ${(error as Error)?.message || "Unknown error."}`,
         },
       ]);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function resumeAction(action: "accept" | "edit" | "reject", editedArgs: any = {}) {
+    if (!pendingAction) return;
+
+    const payload = {
+      session_id: userId,
+      action: action === "edit"
+        ? { type: "edit", args: editedArgs }
+        : { type: action }
+    };
+
+    try {
+      setMessages((msgs) => [...msgs, { from: "user", text: `[${action.toUpperCase()}]` }]);
+      setPendingAction(null);
+      setIsLoading(true);
+
+      const res = await fetch("/assistant/resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      setMessages((msgs) => [...msgs, { from: "bot", text: data.response }]);
+    } catch (err) {
+      console.error("Resume failed:", err);
+      setMessages((msgs) => [...msgs, { from: "bot", text: "Failed to resume agent." }]);
     } finally {
       setIsLoading(false);
     }
@@ -103,27 +133,10 @@ export default function Chatbot() {
       });
 
       if (response.ok) {
-        setMessages([{ from: "bot", text: "Hi! Ask me about any product." }]);
+        setMessages([{ from: "bot", text: "Hi! Welcome to Magento AI Ecommerce Assistant." }]);
       }
     } catch (error) {
       console.error('Failed to clear history:', error);
-    }
-  }
-
-  function formatPrice(price: number): string {
-    return `₹${price.toLocaleString('en-IN')}`;
-  }
-
-  function getStatusColor(status: string): string {
-    switch (status.toLowerCase()) {
-      case 'in stock':
-        return 'text-green-600';
-      case 'out of stock':
-        return 'text-red-600';
-      case 'low stock':
-        return 'text-yellow-600';
-      default:
-        return 'text-gray-600';
     }
   }
 
@@ -141,7 +154,7 @@ export default function Chatbot() {
         </button>
       </div>
 
-      {/* Messages Container */}
+      {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((msg, idx) => (
           <div
@@ -152,54 +165,57 @@ export default function Chatbot() {
               className={`max-w-xs sm:max-w-md md:max-w-lg lg:max-w-xl rounded-lg p-3 ${
                 msg.from === "user"
                   ? "bg-blue-600 text-white rounded-br-none"
-                  : "bg-white text-gray-900 border rounded-bl-none shadow-sm"
+                  : msg.from === "bot"
+                  ? "bg-white text-gray-900 border rounded-bl-none shadow-sm"
+                  : "bg-yellow-100 text-yellow-900 border border-yellow-300"
               }`}
             >
               <p className="whitespace-pre-wrap">{msg.text}</p>
-
-              {/* Product Cards */}
-              {msg.products && msg.products.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  <p className="text-sm font-medium text-gray-600">
-                    Found {msg.products.length} product{msg.products.length > 1 ? 's' : ''}:
-                  </p>
-                  <div className="grid gap-2">
-                    {msg.products.map((product, i) => (
-                      <div
-                        key={i}
-                        className="border rounded-lg p-3 bg-gray-50 hover:bg-gray-100 transition"
-                      >
-                        <div className="flex justify-between items-start mb-2">
-                          <h4 className="font-medium text-sm text-gray-900 line-clamp-2">
-                            {product.name}
-                          </h4>
-                          <span className="text-xs text-gray-500 ml-2">
-                            ID: {product.product_id}
-                          </span>
-                        </div>
-                        
-                        <div className="flex justify-between items-center">
-                          <span className="font-semibold text-blue-600">
-                            {formatPrice(product.price)}
-                          </span>
-                          <div className="text-right">
-                            <div className="text-xs text-gray-600">
-                              Stock: {product.stock}
-                            </div>
-                            <div className={`text-xs font-medium ${getStatusColor(product.status)}`}>
-                              {product.status}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         ))}
-        
+
+        {/* Pending Action UI */}
+        {pendingAction && (
+          <div className="bg-yellow-50 p-4 rounded-md border border-yellow-300 text-sm text-yellow-800">
+            <div className="mb-2">
+              Pending action: <strong>{pendingAction.type}</strong>
+              <pre className="text-xs mt-1">{JSON.stringify(pendingAction.args, null, 2)}</pre>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => resumeAction("accept")}
+                className="px-4 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+              >
+                Approve
+              </button>
+              <button
+                onClick={() =>
+                  resumeAction("edit", {
+                    ...pendingAction.args,
+                    sku: prompt("Enter new SKU:", pendingAction.args.sku) || pendingAction.args.sku
+                  })
+                }
+                className="px-4 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => {
+                  setMessages((msgs) => [
+                    ...msgs,
+                    { from: "bot", text: "Action rejected. Please modify your request." },
+                  ]);
+                  setPendingAction(null);
+                }}
+                className="px-4 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+              >
+                Reject
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Loading indicator */}
         {isLoading && (
           <div className="flex justify-start">
@@ -215,11 +231,11 @@ export default function Chatbot() {
             </div>
           </div>
         )}
-        
+
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Area */}
+      {/* Input */}
       <div className="p-4 bg-white border-t">
         <div className="flex gap-3 max-w-4xl mx-auto">
           <textarea
@@ -244,8 +260,6 @@ export default function Chatbot() {
             )}
           </button>
         </div>
-        
-        {/* User ID display for debugging */}
         <div className="text-xs text-gray-400 mt-2 text-center">
           Session ID: {userId}
         </div>

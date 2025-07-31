@@ -4,7 +4,7 @@ from langchain_core.tools import tool
 from .schemas import CreateProductInput,ViewProductInput,SearchProductsInput,UpdateProductInput
 from modules.magento.client import magento_client
 from utils.log import Logger
-
+from langgraph.types import interrupt
 logger=Logger(name="product_tools", log_file="Logs/app.log", level=logging.DEBUG)
 
 def error_response(action: str, error: Exception) -> Dict:
@@ -128,26 +128,38 @@ def create_product(
     Returns:
         A confirmation with product ID and SKU if created successfully.
     """
+    logger.info("create_product tool invoked")
+    response = interrupt(  
+    f"Trying to call `create_product` with args {{'sku': {sku}}}. "
+    "Please approve or suggest edits."
+)
+    if response["type"] == "accept":
+        pass
+    elif response["type"] == "edit":
+        sku = response["args"]["sku"]
+    else:
+        raise ValueError(f"Unknown response type: {response['type']}")
     try:
-        logger.info("create_product tool invoked")
+        
+        
         payload = {
-            "product": {
-                "sku": sku,
-                "name": name,
-                "price": price,
-                "status": status,
-                "type_id": type_id,
-                "attribute_set_id": attribute_set_id,
-                "weight": weight,
-                "visibility": visibility,
-                "extension_attributes": {
-                    "stock_item": {
-                        "qty": qty,
-                        "is_in_stock": is_in_stock
-                    }
+        "product": {
+            "sku": sku,
+            "name": name,
+            "price": price,
+            "status": status,
+            "type_id": type_id,
+            "attribute_set_id": attribute_set_id,
+            "weight": weight,
+            "visibility": visibility,
+            "extension_attributes": {
+                "stock_item": {
+                    "qty": qty,
+                    "is_in_stock": is_in_stock
                 }
             }
         }
+    }
         response = magento_client.send_request("products", method="POST", data=payload)
         return {"product_id": response.get("id"), "sku": response.get("sku"),"status":"success","message": f"Product {name} ({sku}) created successfully."}
     except Exception as e:
