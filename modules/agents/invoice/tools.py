@@ -2,14 +2,14 @@ import logging
 from typing import  List
 from langchain_core.tools import tool
 from .schemas import InvoiceInput,InvoiceItem
-from .client import magento_client
+from modules.magento.client import magento_client
 from utils.log import Logger
 
 logger=Logger(name="invoice_tools", log_file="Logs/app.log", level=logging.DEBUG)
 
 
 @tool(args_schema=InvoiceInput)
-async def create_invoice(order_id: int, items: List[InvoiceItem], comment: str = "Invoice created", notify: bool = True):
+def create_invoice(order_id: int, items: List[InvoiceItem], comment: str = "Invoice created", notify: bool = True):
     """
     Create an invoice for a Magento order.
     """

@@ -3,13 +3,13 @@ from typing import  Dict,List
 from urllib.parse import urlencode
 from langchain_core.tools import tool
 from .schemas import LowStockAlertInput,UpdateStockInput
-from .client import magento_client
+from modules.magento.client import magento_client
 from utils.log import Logger
 
 logger=Logger(name="stock_tools", log_file="Logs/app.log", level=logging.DEBUG)
 
 @tool(args_schema=UpdateStockInput)
-async def update_stock_qty(sku: str, qty: float, is_in_stock: bool = True):
+def update_stock_qty(sku: str, qty: float, is_in_stock: bool = True):
     """Update stock quantity for a specific product.
     
     Args:
@@ -80,7 +80,7 @@ def get_product_skus_by_ids(product_ids: List[int]) -> List[Dict]:
     
         
 @tool(args_schema=LowStockAlertInput)
-async def low_stock_alert(threshold: float = 10.0, scope_id: int = 0, page_size: int = 100) -> List[Dict]:
+def low_stock_alert(threshold: float = 10.0, scope_id: int = 0, page_size: int = 100) -> List[Dict]:
     """
     Retrieve SKUs with inventory below the specified threshold using Magento's lowStock endpoint.
 

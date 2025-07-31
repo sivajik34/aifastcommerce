@@ -3,13 +3,13 @@ from typing import  List,Optional
 from datetime import datetime, timedelta
 from langchain_core.tools import tool
 from .schemas import CreateOrderInput,OrderItem,GetOrderByIncrementIdInput,GetOrderIdInput,CancelOrderInput,GetOrdersInput
-from .client import magento_client
+from modules.magento.client import magento_client
 from utils.log import Logger
 
 logger=Logger(name="order_tools", log_file="Logs/app.log", level=logging.DEBUG)
 
 @tool(args_schema=CreateOrderInput)
-async def create_order_for_customer(
+def create_order_for_customer(
     customer_email: str,
     firstname: str,
     lastname: str,
@@ -112,7 +112,7 @@ async def create_order_for_customer(
         return {"error": f"Failed to create order: {str(e)}"}
 
 @tool(args_schema=CreateOrderInput)
-async def create_order_for_guest(
+def create_order_for_guest(
     customer_email: str,
     firstname: str,
     lastname: str,

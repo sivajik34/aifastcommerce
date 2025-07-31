@@ -180,7 +180,7 @@ class MagentoOAuthClient:
             
             try:
                 result = response.json()
-                logger.debug("Parsed JSON Response: %s", result)
+                #logger.debug("Parsed JSON Response: %s", result)
                 return result
             except json.JSONDecodeError:
                 logger.warning("Response is not in JSON format. Returning raw text.")

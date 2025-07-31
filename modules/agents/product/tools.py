@@ -2,7 +2,7 @@ import logging
 from typing import  Optional,Dict
 from langchain_core.tools import tool
 from .schemas import CreateProductInput,ViewProductInput,SearchProductsInput,UpdateProductInput
-from .client import magento_client
+from modules.magento.client import magento_client
 from utils.log import Logger
 
 logger=Logger(name="product_tools", log_file="Logs/app.log", level=logging.DEBUG)
@@ -11,7 +11,7 @@ def error_response(action: str, error: Exception) -> Dict:
     return {"error": f"Failed to {action}: {str(error)}"}
 
 @tool(args_schema=ViewProductInput)
-async def view_product(sku: str):
+def view_product(sku: str):
     """Retrieve detailed information about a specific product.
     
     Args:
@@ -41,7 +41,7 @@ async def view_product(sku: str):
 
 
 @tool(args_schema=SearchProductsInput)
-async def search_products(
+def search_products(
     query: str,
     category_id: Optional[int] = None,
     min_price: Optional[float] = None,
@@ -97,7 +97,7 @@ async def search_products(
 
 
 @tool(args_schema=CreateProductInput)
-async def create_product(
+def create_product(
     sku: str,
     name: str,
     price: float,
@@ -151,7 +151,7 @@ async def create_product(
         return {"error": f"Failed to create product: {str(e)}"} 
 
 @tool(args_schema=UpdateProductInput)
-async def update_product(
+def update_product(
     sku: str,
     name: Optional[str] = None,
     price: Optional[float] = None,

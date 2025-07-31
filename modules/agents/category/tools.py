@@ -2,7 +2,7 @@ import logging
 from typing import  List,Dict
 from langchain_core.tools import tool
 from .schemas import CreateCategoryInput,AssignCategoryInput
-from .client import magento_client
+from modules.magento.client import magento_client
 from utils.log import Logger
 
 logger=Logger(name="category_tools", log_file="Logs/app.log", level=logging.DEBUG)
@@ -36,12 +36,13 @@ def create_category(name: str,
             }
         }
         response = magento_client.send_request("categories", method="POST", data=payload)
-        return {"category_id": response.get("id"), "name": response.get("name")}
+        category_id=response.get("id")
+        return {"category_id": category_id, "name": response.get("name"), "status": "success", "message": f"Category {name} created successfully with ID {category_id}"}
     except Exception as e:
         return {"error": str(e)} 
 
 @tool(args_schema=AssignCategoryInput)
-async def assign_product_to_categories(sku: str, category_ids: List[int]):
+def assign_product_to_categories(sku: str, category_ids: List[int]):
     """Assign a product to one or more categories by updating its category_ids.
 
     Args:

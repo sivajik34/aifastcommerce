@@ -1,10 +1,10 @@
 from langchain_core.tools import tool
 from .schemas import ViewCustomerInput,CreateCustomerInput,AddressInput
-from .client import magento_client
+from modules.magento.client import magento_client
 from typing import  Optional
 
 @tool(args_schema=ViewCustomerInput)
-async def get_customer_info(email: str):
+def get_customer_info(email: str):
     """Retrieve detailed information about a specific customer.
     
     Args:
@@ -33,7 +33,7 @@ async def get_customer_info(email: str):
         return {"error": f"Failed to retrieve customer with email '{email}': {str(e)}"}
 
 @tool(args_schema=CreateCustomerInput)
-async def create_customer(
+def create_customer(
     email: str,
     firstname: str,
     lastname: str,
@@ -44,7 +44,7 @@ async def create_customer(
     address: Optional[AddressInput] = None
 ):
     """
-    Create a new customer account in Magento (Admin context).
+    Create a new customer account in Magento.
     Password is optional. Address can also be added optionally.
     """
 
@@ -75,7 +75,9 @@ async def create_customer(
             "message": "Customer created successfully",
             "customer_id": response.get("id"),
             "email": response.get("email"),
-            "name": f"{response.get('firstname')} {response.get('lastname')}"
+            "name": f"{response.get('firstname')} {response.get('lastname')}",
+            "status":"success"
+
         }
     except Exception as e:
         return {"error": f"Failed to create customer: {str(e)}"}
