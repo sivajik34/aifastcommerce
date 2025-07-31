@@ -41,5 +41,6 @@ def get_product_agent(llm):
     - "Update price for SKU XYZ-789 to $29.99" → update product pricing
     
     If you can't find what the user is looking for, suggest alternatives or ask for clarification.
-    """
+    """,
+    checkpointer=checkpointer
     )

@@ -2,27 +2,23 @@
 FastAPI routes for the assistant module
 """
 import logging
+import re
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
-from langchain_core.messages import AIMessage, HumanMessage,ToolMessage
+from langchain_core.messages import AIMessage
+from langgraph.types import interrupt
+from langgraph.types import Command
+from fastapi import Body
 
 from .schema import ChatRequest, ChatResponse
-#from .supervisor_agent import run_workflow
-from .hierarchical_agent import run_workflow
+from .hierarchical_agent import run_workflow, top_level_supervisor
 from .chat_history import chat_history_manager
 from utils.log import Logger
 
-logger=Logger(name="agent_routes", log_file="Logs/app.log", level=logging.DEBUG)
+logger = Logger(name="agent_routes", log_file="Logs/app.log", level=logging.DEBUG)
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
 
-
-
-
-from langchain_core.messages import AIMessage, ToolMessage, BaseMessage
-
-import re
-from langchain_core.messages import AIMessage
 
 def extract_final_response(result) -> str:
     """
@@ -43,7 +39,6 @@ def extract_final_response(result) -> str:
             and not content.startswith("i have successfully")
         )
 
-    # Step 1: Recent meaningful *_agent message
     for msg in reversed(messages):
         if (
             isinstance(msg, AIMessage)
@@ -52,12 +47,10 @@ def extract_final_response(result) -> str:
         ):
             return msg.content.strip()
 
-    # Step 2: Any recent meaningful AI message
     for msg in reversed(messages):
         if is_meaningful(msg):
             return msg.content.strip()
 
-    # Step 3: Fallback to last assistant message with content
     for msg in reversed(messages):
         if isinstance(msg, AIMessage) and msg.content:
             return msg.content.strip()
@@ -65,13 +58,10 @@ def extract_final_response(result) -> str:
     return "No meaningful response found."
 
 
-
-
 @router.post("/chat", response_model=ChatResponse)
 def chat_with_agent(request: ChatRequest):
     """
     Main chat endpoint for the ecommerce assistant.
-    
     Processes user messages, maintains conversation history in PostgreSQL,
     and returns AI responses with context.
     """
@@ -79,35 +69,49 @@ def chat_with_agent(request: ChatRequest):
         session_id = request.session_id
         if not session_id:
             raise HTTPException(status_code=400, detail="session_id is required")
-        
+
         logger.info(f"💬 Processing chat for user {session_id}: {request.message[:50]}...")
-        # Run the agent workflow
         logger.info("🚀 Starting agent workflow...")
+
         result = run_workflow(request.message, str(session_id))
-        logger.debug(f"🧪 Raw result from workflow: {result}")        
-        
-        # Extract the new messages that were added during this interaction
+        logger.info(result)
+
+        if "__interrupt__" in result and isinstance(result["__interrupt__"], list):
+            interrupt = result["__interrupt__"][0]
+            logger.info(f"🛑 Workflow interrupted. Awaiting user input: {interrupt.value}")
+
+            args = getattr(interrupt, "args", {}) or {}
+
+            return JSONResponse(
+                content={
+                    "response": str(interrupt.value),
+                    "interruption": {
+                        "type": "create_product",
+                        "message": str(interrupt.value),
+                        "args": args
+                    }
+                }
+            )
+            
+                    
+
+
+
         result_messages = result.get("messages", [])
-        #logger.info(f"result_messages:{result_messages}")
         for m in result_messages:
             m.pretty_print()
-        response_text = extract_final_response(result)      
-        
 
+        response_text = extract_final_response(result)
         logger.info(f"✅ Response ready: {response_text[:50]}...")
 
-        return ChatResponse(
-            response=response_text,            
-            #message_count=len(updated_messages)
-        )
+        return ChatResponse(response=response_text)
 
     except HTTPException:
-        # Re-raise HTTP exceptions as-is
         raise
     except Exception as e:
         error_msg = f"Internal server error: {str(e)}"
-        logger.error(f"❌ Chat error: {error_msg}")        
-        
+        logger.error(f"❌ Chat error: {error_msg}")
+
         return JSONResponse(
             status_code=500,
             content={
@@ -117,6 +121,39 @@ def chat_with_agent(request: ChatRequest):
                 "message_count": 0
             }
         )
+
+
+@router.post("/resume")
+def resume_agent(
+    session_id: str = Body(...),
+    action: dict = Body(...)
+):
+    """
+    Resume the paused agent workflow after an interruption (e.g., tool call approval/edit).
+    """
+    try:
+        logger.info(f"Resuming agent for session {session_id} with action: {action}")
+        result = top_level_supervisor.invoke(
+            Command(resume=action),
+            config={"configurable": {"thread_id": session_id}},
+        )
+
+        logger.info("✅ Agent resumed successfully.")
+        response_text = extract_final_response(result)
+
+        return ChatResponse(response=response_text)
+
+    except Exception as e:
+        logger.error(f"❌ Failed to resume agent: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": str(e),
+                "response": "Unable to resume the agent due to an internal error."
+            }
+        )
+
+
 
 
 @router.delete("/chat/{session_id}")
