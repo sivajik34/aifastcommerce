@@ -1,10 +1,11 @@
 from langgraph.prebuilt import create_react_agent
-from .tools import tools
-from utils.memory import checkpointer
+from .tools import tools,enhance_product_description_tool
+
 def get_product_agent(llm):
+    enhance_product_description = enhance_product_description_tool(llm)
     return create_react_agent(
         llm,
-        tools,
+        tools+[enhance_product_description],
         name="product_agent",
         prompt="""You are a product management specialist for an e-commerce platform.        
             
@@ -41,6 +42,6 @@ def get_product_agent(llm):
     - "Update price for SKU XYZ-789 to $29.99" → update product pricing
     
     If you can't find what the user is looking for, suggest alternatives or ask for clarification.
-    """,
-    checkpointer=checkpointer
+    """
+ 
     )

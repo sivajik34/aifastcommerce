@@ -1,10 +1,10 @@
 from langgraph.prebuilt import create_react_agent
-from .tools import tools
-from utils.memory import checkpointer 
+from .tools import tools,get_category_seo_by_name_tool
 def get_category_agent(llm):
+    seo_update_tool = get_category_seo_by_name_tool(llm)
     return create_react_agent(
         llm,
-        tools,
+        tools+[seo_update_tool],
         name="category_agent",
         prompt="""You are a category management specialist for an e-commerce platform.
 

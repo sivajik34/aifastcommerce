@@ -1,10 +1,14 @@
 import logging
 from typing import  Optional,Dict
 from langchain_core.tools import tool
-from .schemas import CreateProductInput,ViewProductInput,SearchProductsInput,UpdateProductInput
+from .schemas import CreateProductInput,ViewProductInput,SearchProductsInput,UpdateProductInput,DeleteProductInput
 from modules.magento.client import magento_client
 from utils.log import Logger
-from langgraph.types import interrupt
+from modules.magento_tools.human import add_human_in_the_loop
+from langchain.tools import Tool
+from langchain_core.prompts import ChatPromptTemplate
+from langchain.output_parsers import PydanticOutputParser
+from pydantic import BaseModel
 logger=Logger(name="product_tools", log_file="Logs/app.log", level=logging.DEBUG)
 
 def error_response(action: str, error: Exception) -> Dict:
@@ -12,33 +16,91 @@ def error_response(action: str, error: Exception) -> Dict:
 
 @tool(args_schema=ViewProductInput)
 def view_product(sku: str):
-    """Retrieve detailed information about a specific product.
-    
-    Args:
-        sku: The unique identifier of the product
-        
-    Returns:
-        Product details including name, current price, and available stock quantity.
-        Use this before adding items to cart or when users ask about specific products.
-    """
+    """Retrieve detailed information about a specific product, including associated products if applicable."""
     logger.info("view_product tool invoked")
-    try:        
+    try:
+        # Step 1: Get main product
         endpoint = f"products/{sku}"
-        product=magento_client.send_request(endpoint=endpoint, method="GET")
+        product = magento_client.send_request(endpoint=endpoint, method="GET")
+
         name = product.get("name")
-        price = product.get("price", product.get("price", 0.0))
+        price = product.get("price", 0.0)
         stock_item = product.get("extension_attributes", {}).get("stock_item", {})
         stock_qty = stock_item.get("qty", 0)
         is_in_stock = stock_item.get("is_in_stock", False)
-        return {
-                "sku": sku,
-                "name": name,
-                "price": float(price),
-                "stock": stock_qty,
-                "status": "available" if is_in_stock else "out_of_stock"
-            }
+        type_id = product.get("type_id")
+
+        result = {
+            "sku": sku,
+            "name": name,
+            "type": type_id,
+            "price": float(price),
+            "stock": stock_qty,
+            "status": "available" if is_in_stock else "out_of_stock"
+        }
+
+        detailed_associated = []
+
+        # Configurable Products
+        if type_id == "configurable":
+            children_endpoint = f"configurable-products/{sku}/children"
+            children = magento_client.send_request(endpoint=children_endpoint, method="GET")
+
+            for child in children:
+                child_sku = child.get("sku")
+                child_details = magento_client.send_request(endpoint=f"products/{child_sku}", method="GET")
+                child_stock = child_details.get("extension_attributes", {}).get("stock_item", {})
+                detailed_associated.append({
+                    "sku": child_sku,
+                    "name": child_details.get("name"),
+                    "price": float(child_details.get("price", 0.0)),
+                    "stock": child_stock.get("qty", 0),
+                    "status": "available" if child_stock.get("is_in_stock", False) else "out_of_stock"
+                })
+
+        # Grouped Products
+        elif type_id == "grouped":
+            links_endpoint = f"products/{sku}/links/associated"
+            links = magento_client.send_request(endpoint=links_endpoint, method="GET")
+
+            for item in links:
+                child_sku = item.get("linked_product_sku")
+                child_details = magento_client.send_request(endpoint=f"products/{child_sku}", method="GET")
+                child_stock = child_details.get("extension_attributes", {}).get("stock_item", {})
+                detailed_associated.append({
+                    "sku": child_sku,
+                    "name": child_details.get("name"),
+                    "price": float(child_details.get("price", 0.0)),
+                    "stock": child_stock.get("qty", 0),
+                    "status": "available" if child_stock.get("is_in_stock", False) else "out_of_stock"
+                })
+
+        # Bundle Products
+        elif type_id == "bundle":
+            options_endpoint = f"bundle-products/{sku}/options/all"
+            options = magento_client.send_request(endpoint=options_endpoint, method="GET")
+
+            for option in options:
+                for link in option.get("product_links", []):
+                    child_sku = link.get("sku")
+                    child_details = magento_client.send_request(endpoint=f"products/{child_sku}", method="GET")
+                    child_stock = child_details.get("extension_attributes", {}).get("stock_item", {})
+                    detailed_associated.append({
+                        "sku": child_sku,
+                        "name": child_details.get("name"),
+                        "price": float(child_details.get("price", 0.0)),
+                        "stock": child_stock.get("qty", 0),
+                        "status": "available" if child_stock.get("is_in_stock", False) else "out_of_stock"
+                    })
+
+        if detailed_associated:
+            result["associated_products"] = detailed_associated
+
+        return result
+
     except Exception as e:
-        return {"error": f"Failed to retrieve product with SKU '{sku}': {str(e)}"}   
+        logger.error("Failed to retrieve product details")
+        return {"error": f"Failed to retrieve product with SKU '{sku}': {str(e)}"}  
 
 
 @tool(args_schema=SearchProductsInput)
@@ -129,16 +191,7 @@ def create_product(
         A confirmation with product ID and SKU if created successfully.
     """
     logger.info("create_product tool invoked")
-    response = interrupt(  
-    f"Trying to call `create_product` with args {{'sku': {sku}}}. "
-    "Please approve or suggest edits."
-)
-    if response["type"] == "accept":
-        pass
-    elif response["type"] == "edit":
-        sku = response["args"]["sku"]
-    else:
-        raise ValueError(f"Unknown response type: {response['type']}")
+   
     try:
         
         
@@ -225,5 +278,106 @@ def update_product(
         return {"updated_product": response}
     except Exception as e:
         return {"error": f"Failed to update product {sku}: {str(e)}"}
-            
-tools=[view_product,search_products,update_product,create_product]     
+
+@tool(args_schema=DeleteProductInput)
+def delete_product(sku: str):
+    """Delete a product from Magento using its SKU.
+
+    This action is irreversible. Use only if you're sure the product should be removed.
+    """
+    logger.info("delete_product tool invoked")  
+
+    try:
+        endpoint = f"products/{sku}"
+        magento_client.send_request(endpoint, method="DELETE")
+        return {"sku": sku, "status": "deleted", "message": f"Product with SKU '{sku}' deleted successfully."}
+    except Exception as e:
+        return {"error": f"Failed to delete product {sku}: {str(e)}"}
+    
+delete_product_with_hitl = add_human_in_the_loop(delete_product) 
+
+class ProductDescription(BaseModel):
+    short_description: str
+    description: str
+
+def enhance_product_description_tool(llm):
+    """
+    Creates a tool that enhances or generates product descriptions using an LLM.
+    """
+
+    parser = PydanticOutputParser(pydantic_object=ProductDescription)
+
+    prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are a product copywriting expert for an e-commerce store."),
+    ("human", (
+        "Write short_description and full description for product with SKU '{sku}'.\n"
+        "Product name: {name}\n"
+        "Existing description: {description}\n"
+        "Existing short description: {short_description}\n\n"
+        "{format_instructions}"
+    ))
+])
+
+    chain = prompt.partial(format_instructions=parser.get_format_instructions()) | llm | parser
+
+    def _enhance_description(sku: str) -> dict:
+        try:
+            logger.info(f"Enhancing product description for SKU: {sku}")
+
+            # Step 1: Fetch existing product
+            product = magento_client.send_request(f"products/{sku}", method="GET")
+            if not product:
+                return {"error": f"Product with SKU '{sku}' not found"}
+
+            # Step 2: If descriptions exist, send to LLM to enhance
+            def extract_custom_attribute(custom_attributes, code):
+                for attr in custom_attributes:
+                    if attr.get("attribute_code") == code:
+                        return attr.get("value", "")
+                return ""
+
+            custom_attrs = product.get("custom_attributes", [])
+            short_desc = extract_custom_attribute(custom_attrs, "short_description")
+            desc = extract_custom_attribute(custom_attrs, "description")
+            name =product.get("name")
+
+            input_data = {
+                "name":name,
+                "sku": sku,
+                "short_description": short_desc,
+                "description": desc,
+            }
+
+            # Step 3: LLM generates new content
+            enhanced: ProductDescription = chain.invoke(input_data)
+            logger.info(f"Generated descriptions: {enhanced.model_dump()}")
+
+            # Step 4: Update product in Magento
+            payload = {
+                "product": {
+                    "sku": sku,
+                    "custom_attributes": [
+                        {"attribute_code": "description", "value": enhanced.description},
+                        {"attribute_code": "short_description", "value": enhanced.short_description}
+                    ]
+                }
+            }
+
+            response = magento_client.send_request(f"products/{sku}", method="PUT", data=payload)
+
+            return {
+                "message": f"Descriptions updated for SKU '{sku}'",
+                "generated": enhanced.model_dump(),
+                "magento_response": response
+            }
+
+        except Exception as e:
+            logger.error(f"Error enhancing product description: {str(e)}")
+            return {"error": str(e)}
+
+    return Tool.from_function(
+        name="enhance_product_description_by_sku",
+        description="Enhances or generates product short_description and description based on SKU using LLM.",
+        func=_enhance_description
+    )               
+tools=[view_product,search_products,update_product,create_product,delete_product_with_hitl]     

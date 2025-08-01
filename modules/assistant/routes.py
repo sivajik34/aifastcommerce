@@ -11,7 +11,7 @@ from langgraph.types import Command
 from fastapi import Body
 
 from .schema import ChatRequest, ChatResponse
-from .hierarchical_agent import run_workflow, top_level_supervisor
+from .hierarchical_agent import run_workflow
 from .chat_history import chat_history_manager
 from utils.log import Logger
 
@@ -73,27 +73,31 @@ def chat_with_agent(request: ChatRequest):
         logger.info(f"💬 Processing chat for user {session_id}: {request.message[:50]}...")
         logger.info("🚀 Starting agent workflow...")
 
-        result = run_workflow(request.message, str(session_id))
+        result = run_workflow(request.message, "",str(session_id))
         logger.info(result)
 
         if "__interrupt__" in result and isinstance(result["__interrupt__"], list):
             interrupt = result["__interrupt__"][0]
             logger.info(f"🛑 Workflow interrupted. Awaiting user input: {interrupt.value}")
 
-            args = getattr(interrupt, "args", {}) or {}
+            # 💡 Extract from interrupt.value[0]
+            value = interrupt.value[0]
+            action_request = value.get("action_request", {})
+            tool_name = action_request.get("action", "unknown")
+            args = action_request.get("args", {})
+
+            logger.info(f"Interrupt tool: {tool_name}, args: {args}")
 
             return JSONResponse(
                 content={
                     "response": str(interrupt.value),
                     "interruption": {
-                        "type": "create_product",
-                        "message": str(interrupt.value),
+                        "type": tool_name,  # ✅ Now correctly "delete_product"
+                        "message": value.get("description", ""),
                         "args": args
                     }
                 }
             )
-            
-                    
 
 
 
@@ -123,22 +127,28 @@ def chat_with_agent(request: ChatRequest):
         )
 
 
-@router.post("/resume")
+@router.post("/resume", response_model=ChatResponse)
 def resume_agent(
-    session_id: str = Body(...),
-    action: dict = Body(...)
+    session_id: str = Body(..., embed=True),
+    action: dict = Body(..., embed=True)
 ):
     """
     Resume the paused agent workflow after an interruption (e.g., tool call approval/edit).
     """
     try:
-        logger.info(f"Resuming agent for session {session_id} with action: {action}")
-        result = top_level_supervisor.invoke(
-            Command(resume=action),
-            config={"configurable": {"thread_id": session_id}},
-        )
+        logger.info(f"♻️ Resuming agent for session_id: {session_id} with action: {action}")
+
+        # Build the Command object with the resume action
+        command = Command(resume=[action])
+
+        
+        result = run_workflow("",command, session_id,True)
 
         logger.info("✅ Agent resumed successfully.")
+        result_messages = result.get("messages", [])
+        for m in result_messages:
+            m.pretty_print()
+
         response_text = extract_final_response(result)
 
         return ChatResponse(response=response_text)
@@ -152,7 +162,6 @@ def resume_agent(
                 "response": "Unable to resume the agent due to an internal error."
             }
         )
-
 
 
 
