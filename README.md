@@ -18,7 +18,6 @@ Ideal for automating product, order, customer, and inventory management workflow
 - ✅ Product creation, order placement, cart handling, and more
 - ✅ Built-in support for guest and logged-in customers
 - ✅ FastAPI-based backend with Swagger docs
-- ✅ PostgreSQL-based chat history
 - ✅ REST endpoints for chat
   
 ---
@@ -29,11 +28,6 @@ Ideal for automating product, order, customer, and inventory management workflow
 - **API**: FastAPI
 - **Database**: PostgreSQL (for chat history)
 - **Magento API**: OAuth 1.0 REST API
-- **WebSocket Support**: FastAPI built-in
--
-- **Docker**: Local Magento setup (optional)
-
----
 
 ## 🧰 Getting Started
 
