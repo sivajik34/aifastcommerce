@@ -5,6 +5,10 @@ from .schemas import CreateProductInput,ViewProductInput,SearchProductsInput,Upd
 from modules.magento.client import magento_client
 from utils.log import Logger
 from modules.magento_tools.human import add_human_in_the_loop
+from langchain.tools import Tool
+from langchain_core.prompts import ChatPromptTemplate
+from langchain.output_parsers import PydanticOutputParser
+from pydantic import BaseModel
 logger=Logger(name="product_tools", log_file="Logs/app.log", level=logging.DEBUG)
 
 def error_response(action: str, error: Exception) -> Dict:
@@ -290,5 +294,90 @@ def delete_product(sku: str):
     except Exception as e:
         return {"error": f"Failed to delete product {sku}: {str(e)}"}
     
-delete_product_with_hitl = add_human_in_the_loop(delete_product)                
+delete_product_with_hitl = add_human_in_the_loop(delete_product) 
+
+class ProductDescription(BaseModel):
+    short_description: str
+    description: str
+
+def enhance_product_description_tool(llm):
+    """
+    Creates a tool that enhances or generates product descriptions using an LLM.
+    """
+
+    parser = PydanticOutputParser(pydantic_object=ProductDescription)
+
+    prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are a product copywriting expert for an e-commerce store."),
+    ("human", (
+        "Write short_description and full description for product with SKU '{sku}'.\n"
+        "Product name: {name}\n"
+        "Existing description: {description}\n"
+        "Existing short description: {short_description}\n\n"
+        "{format_instructions}"
+    ))
+])
+
+    chain = prompt.partial(format_instructions=parser.get_format_instructions()) | llm | parser
+
+    def _enhance_description(sku: str) -> dict:
+        try:
+            logger.info(f"Enhancing product description for SKU: {sku}")
+
+            # Step 1: Fetch existing product
+            product = magento_client.send_request(f"products/{sku}", method="GET")
+            if not product:
+                return {"error": f"Product with SKU '{sku}' not found"}
+
+            # Step 2: If descriptions exist, send to LLM to enhance
+            def extract_custom_attribute(custom_attributes, code):
+                for attr in custom_attributes:
+                    if attr.get("attribute_code") == code:
+                        return attr.get("value", "")
+                return ""
+
+            custom_attrs = product.get("custom_attributes", [])
+            short_desc = extract_custom_attribute(custom_attrs, "short_description")
+            desc = extract_custom_attribute(custom_attrs, "description")
+            name =product.get("name")
+
+            input_data = {
+                "name":name,
+                "sku": sku,
+                "short_description": short_desc,
+                "description": desc,
+            }
+
+            # Step 3: LLM generates new content
+            enhanced: ProductDescription = chain.invoke(input_data)
+            logger.info(f"Generated descriptions: {enhanced.model_dump()}")
+
+            # Step 4: Update product in Magento
+            payload = {
+                "product": {
+                    "sku": sku,
+                    "custom_attributes": [
+                        {"attribute_code": "description", "value": enhanced.description},
+                        {"attribute_code": "short_description", "value": enhanced.short_description}
+                    ]
+                }
+            }
+
+            response = magento_client.send_request(f"products/{sku}", method="PUT", data=payload)
+
+            return {
+                "message": f"Descriptions updated for SKU '{sku}'",
+                "generated": enhanced.model_dump(),
+                "magento_response": response
+            }
+
+        except Exception as e:
+            logger.error(f"Error enhancing product description: {str(e)}")
+            return {"error": str(e)}
+
+    return Tool.from_function(
+        name="enhance_product_description_by_sku",
+        description="Enhances or generates product short_description and description based on SKU using LLM.",
+        func=_enhance_description
+    )               
 tools=[view_product,search_products,update_product,create_product,delete_product_with_hitl]     
