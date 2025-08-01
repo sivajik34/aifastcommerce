@@ -1,6 +1,5 @@
 from langgraph.prebuilt import create_react_agent
 from .tools import tools
-from utils.memory import checkpointer 
 
 def get_customer_agent(llm):
     return create_react_agent(

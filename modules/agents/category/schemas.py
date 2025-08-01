@@ -10,3 +10,12 @@ class CreateCategoryInput(BaseModel):
 class AssignCategoryInput(BaseModel):
     sku: str
     category_ids: List[int]
+
+class CategoryMetadata(BaseModel):
+    description: str
+    meta_title: str
+    meta_keywords: str
+    meta_description: str
+
+class DeleteCategoryInput(BaseModel):
+    category_id:int

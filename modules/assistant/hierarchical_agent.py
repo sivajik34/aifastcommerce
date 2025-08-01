@@ -12,7 +12,7 @@ from modules.llm.factory import get_llm_strategy
 from langgraph_supervisor import create_supervisor
 from utils.log import Logger
 from utils.memory import store
-
+from langgraph.checkpoint.postgres import PostgresSaver
 #from modules.magento_tools.utility_tools import tools as utiltools
 
 from modules.agents.customer.agent import get_customer_agent
@@ -58,11 +58,11 @@ customer_team = get_customer_team(llm, agents=[customer_agent])
 
 def run_workflow(user_input: str, command,session_id: str,came_from_resume:bool =False):
     """Run the complete workflow with user input"""
-    from langgraph.checkpoint.postgres import PostgresSaver
+    
     DB_URI = os.getenv("DATABASE_URL_NEW")
     # TOP LEVEL SUPERVISOR
     with PostgresSaver.from_conn_string(DB_URI) as checkpointer:
-        checkpointer.setup()
+        #checkpointer.setup() #onetime 
         top_level_supervisor = create_supervisor(
             [catalog_team, sales_team, customer_team],
             model=llm,

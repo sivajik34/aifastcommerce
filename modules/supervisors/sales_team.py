@@ -1,5 +1,5 @@
 from langgraph_supervisor import create_supervisor
-from utils.memory import checkpointer, store
+
 
 def get_sales_team(llm, agents):
     return create_supervisor(
