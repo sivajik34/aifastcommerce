@@ -12,33 +12,91 @@ def error_response(action: str, error: Exception) -> Dict:
 
 @tool(args_schema=ViewProductInput)
 def view_product(sku: str):
-    """Retrieve detailed information about a specific product.
-    
-    Args:
-        sku: The unique identifier of the product
-        
-    Returns:
-        Product details including name, current price, and available stock quantity.
-        Use this before adding items to cart or when users ask about specific products.
-    """
+    """Retrieve detailed information about a specific product, including associated products if applicable."""
     logger.info("view_product tool invoked")
-    try:        
+    try:
+        # Step 1: Get main product
         endpoint = f"products/{sku}"
-        product=magento_client.send_request(endpoint=endpoint, method="GET")
+        product = magento_client.send_request(endpoint=endpoint, method="GET")
+
         name = product.get("name")
-        price = product.get("price", product.get("price", 0.0))
+        price = product.get("price", 0.0)
         stock_item = product.get("extension_attributes", {}).get("stock_item", {})
         stock_qty = stock_item.get("qty", 0)
         is_in_stock = stock_item.get("is_in_stock", False)
-        return {
-                "sku": sku,
-                "name": name,
-                "price": float(price),
-                "stock": stock_qty,
-                "status": "available" if is_in_stock else "out_of_stock"
-            }
+        type_id = product.get("type_id")
+
+        result = {
+            "sku": sku,
+            "name": name,
+            "type": type_id,
+            "price": float(price),
+            "stock": stock_qty,
+            "status": "available" if is_in_stock else "out_of_stock"
+        }
+
+        detailed_associated = []
+
+        # Configurable Products
+        if type_id == "configurable":
+            children_endpoint = f"configurable-products/{sku}/children"
+            children = magento_client.send_request(endpoint=children_endpoint, method="GET")
+
+            for child in children:
+                child_sku = child.get("sku")
+                child_details = magento_client.send_request(endpoint=f"products/{child_sku}", method="GET")
+                child_stock = child_details.get("extension_attributes", {}).get("stock_item", {})
+                detailed_associated.append({
+                    "sku": child_sku,
+                    "name": child_details.get("name"),
+                    "price": float(child_details.get("price", 0.0)),
+                    "stock": child_stock.get("qty", 0),
+                    "status": "available" if child_stock.get("is_in_stock", False) else "out_of_stock"
+                })
+
+        # Grouped Products
+        elif type_id == "grouped":
+            links_endpoint = f"products/{sku}/links/associated"
+            links = magento_client.send_request(endpoint=links_endpoint, method="GET")
+
+            for item in links:
+                child_sku = item.get("linked_product_sku")
+                child_details = magento_client.send_request(endpoint=f"products/{child_sku}", method="GET")
+                child_stock = child_details.get("extension_attributes", {}).get("stock_item", {})
+                detailed_associated.append({
+                    "sku": child_sku,
+                    "name": child_details.get("name"),
+                    "price": float(child_details.get("price", 0.0)),
+                    "stock": child_stock.get("qty", 0),
+                    "status": "available" if child_stock.get("is_in_stock", False) else "out_of_stock"
+                })
+
+        # Bundle Products
+        elif type_id == "bundle":
+            options_endpoint = f"bundle-products/{sku}/options/all"
+            options = magento_client.send_request(endpoint=options_endpoint, method="GET")
+
+            for option in options:
+                for link in option.get("product_links", []):
+                    child_sku = link.get("sku")
+                    child_details = magento_client.send_request(endpoint=f"products/{child_sku}", method="GET")
+                    child_stock = child_details.get("extension_attributes", {}).get("stock_item", {})
+                    detailed_associated.append({
+                        "sku": child_sku,
+                        "name": child_details.get("name"),
+                        "price": float(child_details.get("price", 0.0)),
+                        "stock": child_stock.get("qty", 0),
+                        "status": "available" if child_stock.get("is_in_stock", False) else "out_of_stock"
+                    })
+
+        if detailed_associated:
+            result["associated_products"] = detailed_associated
+
+        return result
+
     except Exception as e:
-        return {"error": f"Failed to retrieve product with SKU '{sku}': {str(e)}"}   
+        logger.error("Failed to retrieve product details")
+        return {"error": f"Failed to retrieve product with SKU '{sku}': {str(e)}"}  
 
 
 @tool(args_schema=SearchProductsInput)
