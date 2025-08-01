@@ -56,10 +56,10 @@ export default function Chatbot() {
       }
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${data.detail || 'Request failed'}`);
+        throw new Error(`HTTP ${response.status}: ${data.detail || "Request failed"}`);
       }
 
-      // If there's an interruption, prompt user for action
+      // Handle interruption from backend
       if (data.interruption) {
         setPendingAction(data.interruption);
         setMessages((msgs) => [...msgs, { from: "system", text: data.response }]);
@@ -68,13 +68,12 @@ export default function Chatbot() {
 
       const newBotMessage: Message = {
         from: "bot",
-        text: data.response || "No response received."
+        text: data.response || "No response received.",
       };
 
       setMessages((msgs) => [...msgs, newBotMessage]);
-
     } catch (error) {
-      console.error('Chat error:', error);
+      console.error("Chat error:", error);
       setMessages((msgs) => [
         ...msgs,
         {
@@ -87,18 +86,27 @@ export default function Chatbot() {
     }
   }
 
-  async function resumeAction(action: "accept" | "edit" | "reject", editedArgs: any = {}) {
+  async function resumeAction(actionType: "accept" | "edit" | "reject", editedArgs: any = {}) {
     if (!pendingAction) return;
+
+    // Construct action payload matching backend API expectations
+    const actionPayload =
+      actionType === "edit"
+        ? {
+            type: "edit",
+            args: editedArgs,
+          }
+        : {
+            type: actionType,
+          };
 
     const payload = {
       session_id: userId,
-      action: action === "edit"
-        ? { type: "edit", args: editedArgs }
-        : { type: action }
+      action: actionPayload,
     };
 
     try {
-      setMessages((msgs) => [...msgs, { from: "user", text: `[${action.toUpperCase()}]` }]);
+      setMessages((msgs) => [...msgs, { from: "user", text: `[${actionType.toUpperCase()}]` }]);
       setPendingAction(null);
       setIsLoading(true);
 
@@ -136,7 +144,7 @@ export default function Chatbot() {
         setMessages([{ from: "bot", text: "Hi! Welcome to Magento AI Ecommerce Assistant." }]);
       }
     } catch (error) {
-      console.error('Failed to clear history:', error);
+      console.error("Failed to clear history:", error);
     }
   }
 
@@ -192,8 +200,10 @@ export default function Chatbot() {
               <button
                 onClick={() =>
                   resumeAction("edit", {
-                    ...pendingAction.args,
-                    sku: prompt("Enter new SKU:", pendingAction.args.sku) || pendingAction.args.sku
+                    args: {
+                      ...pendingAction.args,
+                      sku: prompt("Enter new SKU:", pendingAction.args?.sku) || pendingAction.args?.sku,
+                    },
                   })
                 }
                 className="px-4 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
@@ -223,8 +233,14 @@ export default function Chatbot() {
               <div className="flex items-center space-x-2">
                 <div className="flex space-x-1">
                   <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                  <div
+                    className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                    style={{ animationDelay: "0.1s" }}
+                  ></div>
+                  <div
+                    className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                    style={{ animationDelay: "0.2s" }}
+                  ></div>
                 </div>
                 <span className="text-sm text-gray-500">Assistant is thinking...</span>
               </div>
@@ -246,7 +262,7 @@ export default function Chatbot() {
             placeholder="Ask about products, check stock, get recommendations..."
             disabled={isLoading}
             className="flex-1 border rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
-            style={{ minHeight: '44px', maxHeight: '120px' }}
+            style={{ minHeight: "44px", maxHeight: "120px" }}
           />
           <button
             onClick={sendMessage}
@@ -260,9 +276,7 @@ export default function Chatbot() {
             )}
           </button>
         </div>
-        <div className="text-xs text-gray-400 mt-2 text-center">
-          Session ID: {userId}
-        </div>
+        <div className="text-xs text-gray-400 mt-2 text-center">Session ID: {userId}</div>
       </div>
     </div>
   );

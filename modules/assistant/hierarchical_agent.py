@@ -11,7 +11,7 @@ from langchain_community.vectorstores import FAISS
 from modules.llm.factory import get_llm_strategy
 from langgraph_supervisor import create_supervisor
 from utils.log import Logger
-from utils.memory import checkpointer,store
+from utils.memory import store
 
 #from modules.magento_tools.utility_tools import tools as utiltools
 
@@ -38,8 +38,7 @@ retriever = FAISS.load_local(
     embeddings,
     allow_dangerous_deserialization=True
 ).as_retriever(search_type="similarity", k=4)
-#relevant_docs = retriever.invoke(user_input)
-#context_text = "\n\n".join(doc.page_content for doc in relevant_docs)
+
 
 strategy = get_llm_strategy("openai", "")
 llm = strategy.initialize()
@@ -56,71 +55,91 @@ sales_team = get_sales_team(llm, agents=[order_agent, shipment_agent, invoice_ag
 catalog_team = get_catalog_team(llm, agents=[product_agent, category_agent, stock_agent])
 customer_team = get_customer_team(llm, agents=[customer_agent])
 
-# TOP LEVEL SUPERVISOR
-top_level_supervisor = create_supervisor(
-    [catalog_team, sales_team, customer_team],
-    model=llm,
-    supervisor_name="top_level_supervisor",
-    prompt="""You are the Top Level Supervisor managing the entire e-commerce platform operations.
 
-    Your teams consist of:
-    1. catalog_team: Manages products, categories, and inventory
-       - Product management (create, update, search, view)
-       - Category organization and structure
-       - Stock monitoring and inventory updates
-    
-    2. sales_team: Handles order fulfillment and sales operations
-       - Order processing and management
-       - Shipping and delivery coordination
-       - Invoicing and payment processing
-    
-    3. customer_team: Manages customer accounts and relationships
-       - Customer registration and profile management
-       - Account updates and maintenance
-       - Customer support and service
-    
-    Routing Guidelines:
-    - Product/category/inventory questions → catalog_team
-    - Order/shipping/billing questions → sales_team
-    - Customer account/profile questions → customer_team
-    
-    Cross-team Coordination:
-    - New customer orders require customer validation + product availability + order processing
-    - Product updates may affect existing orders and customer notifications
-    - Customer account changes may impact order history and preferences
-    
-    Always:
-    - Analyze requests carefully to determine the appropriate team
-    - Coordinate between teams for complex multi-step operations
-    - Ensure consistent customer experience across all interactions
-    - Prioritize customer satisfaction and operational efficiency
-    - Handle escalations and complex issues requiring multiple team coordination
-    
-    Examples:
-    - "Create order for customer john@email.com" → Coordinate customer_team + catalog_team + sales_team
-    - "Show me product ABC-123" → catalog_team
-    - "Track my order #12345" → sales_team
-    - "Update my address" → customer_team
-    - "Add new product and create order for it" → catalog_team + sales_team coordination
-    """,
-    output_mode="full_history"
-).compile(checkpointer=checkpointer, store=store, name="top_level_supervisor")
-
-
-def run_workflow(user_input: str, session_id: str):
+def run_workflow(user_input: str, command,session_id: str,came_from_resume:bool =False):
     """Run the complete workflow with user input"""
+    from langgraph.checkpoint.postgres import PostgresSaver
+    DB_URI = os.getenv("DATABASE_URL_NEW")
+    # TOP LEVEL SUPERVISOR
+    with PostgresSaver.from_conn_string(DB_URI) as checkpointer:
+        checkpointer.setup()
+        top_level_supervisor = create_supervisor(
+            [catalog_team, sales_team, customer_team],
+            model=llm,
+            supervisor_name="top_level_supervisor",
+            prompt="""You are the Top Level Supervisor managing the entire e-commerce platform operations.
 
-    logger.info(f"user_input:{user_input}")
+            Your teams consist of:
+            1. catalog_team: Manages products, categories, and inventory
+            - Product management (create, update, search, view)
+            - Category organization and structure
+            - Stock monitoring and inventory updates
+            
+            2. sales_team: Handles order fulfillment and sales operations
+            - Order processing and management
+            - Shipping and delivery coordination
+            - Invoicing and payment processing
+            
+            3. customer_team: Manages customer accounts and relationships
+            - Customer registration and profile management
+            - Account updates and maintenance
+            - Customer support and service
+            
+            Routing Guidelines:
+            - Product/category/inventory questions → catalog_team
+            - Order/shipping/billing questions → sales_team
+            - Customer account/profile questions → customer_team
+            
+            Cross-team Coordination:
+            - New customer orders require customer validation + product availability + order processing
+            - Product updates may affect existing orders and customer notifications
+            - Customer account changes may impact order history and preferences
+            
+            Always:
+            - Analyze requests carefully to determine the appropriate team
+            - Coordinate between teams for complex multi-step operations
+            - Ensure consistent customer experience across all interactions
+            - Prioritize customer satisfaction and operational efficiency
+            - Handle escalations and complex issues requiring multiple team coordination
+            
+            Examples:
+            - "Create order for customer john@email.com" → Coordinate customer_team + catalog_team + sales_team
+            - "Show me product ABC-123" → catalog_team
+            - "Track my order #12345" → sales_team
+            - "Update my address" → customer_team
+            - "Add new product and create order for it" → catalog_team + sales_team coordination
+            """,
+            output_mode="full_history"
+        ).compile(checkpointer=checkpointer, store=store, name="top_level_supervisor")
 
-    result = top_level_supervisor.invoke(
-        {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": user_input
-                }
-            ]
-        },
-        config={"configurable": {"thread_id": session_id}}
-    )    
-    return result
+        if came_from_resume:
+            
+
+            result = top_level_supervisor.invoke(
+                command,
+                config={"configurable": {"thread_id": session_id}}
+            )
+        else:
+            logger.info(f"user_input:{user_input}")
+            # Step 1: Retrieve documentation context
+            relevant_docs = retriever.invoke(user_input)
+            context_text = "\n\n".join(doc.page_content for doc in relevant_docs)
+            messages = []
+
+            if context_text.strip():
+                messages.append({
+                    "role": "system",
+                    "content": f"Documentation Context:\n{context_text}"
+                })
+
+            # Step 3: Add actual user input
+            messages.append({
+                "role": "user",
+                "content": user_input
+            })
+
+            result = top_level_supervisor.invoke(
+                {"messages": messages},
+                config={"configurable": {"thread_id": session_id}}
+            )       
+        return result

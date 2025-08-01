@@ -1,10 +1,10 @@
 import logging
 from typing import  Optional,Dict
 from langchain_core.tools import tool
-from .schemas import CreateProductInput,ViewProductInput,SearchProductsInput,UpdateProductInput
+from .schemas import CreateProductInput,ViewProductInput,SearchProductsInput,UpdateProductInput,DeleteProductInput
 from modules.magento.client import magento_client
 from utils.log import Logger
-from langgraph.types import interrupt
+from modules.magento_tools.human import add_human_in_the_loop
 logger=Logger(name="product_tools", log_file="Logs/app.log", level=logging.DEBUG)
 
 def error_response(action: str, error: Exception) -> Dict:
@@ -129,16 +129,7 @@ def create_product(
         A confirmation with product ID and SKU if created successfully.
     """
     logger.info("create_product tool invoked")
-    response = interrupt(  
-    f"Trying to call `create_product` with args {{'sku': {sku}}}. "
-    "Please approve or suggest edits."
-)
-    if response["type"] == "accept":
-        pass
-    elif response["type"] == "edit":
-        sku = response["args"]["sku"]
-    else:
-        raise ValueError(f"Unknown response type: {response['type']}")
+   
     try:
         
         
@@ -225,5 +216,21 @@ def update_product(
         return {"updated_product": response}
     except Exception as e:
         return {"error": f"Failed to update product {sku}: {str(e)}"}
-            
-tools=[view_product,search_products,update_product,create_product]     
+
+@tool(args_schema=DeleteProductInput)
+def delete_product(sku: str):
+    """Delete a product from Magento using its SKU.
+
+    This action is irreversible. Use only if you're sure the product should be removed.
+    """
+    logger.info("delete_product tool invoked")  
+
+    try:
+        endpoint = f"products/{sku}"
+        magento_client.send_request(endpoint, method="DELETE")
+        return {"sku": sku, "status": "deleted", "message": f"Product with SKU '{sku}' deleted successfully."}
+    except Exception as e:
+        return {"error": f"Failed to delete product {sku}: {str(e)}"}
+    
+delete_product_with_hitl = add_human_in_the_loop(delete_product)                
+tools=[view_product,search_products,update_product,create_product,delete_product_with_hitl]     

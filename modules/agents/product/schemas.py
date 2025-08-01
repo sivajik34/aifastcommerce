@@ -38,3 +38,6 @@ class SearchProductsInput(BaseModel):
     max_price: Optional[float] = Field(default=None, description="Maximum price filter")
     sort_by: Optional[str] = Field(default="relevance", description="Sort by: relevance, price_asc, price_desc, rating, newest")
     limit: Optional[int] = Field(default=10, description="Maximum number of results")
+
+class DeleteProductInput(BaseModel):
+    sku: str
