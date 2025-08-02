@@ -39,8 +39,8 @@ retriever = FAISS.load_local(
     allow_dangerous_deserialization=True
 ).as_retriever(search_type="similarity", k=4)
 
-
-strategy = get_llm_strategy("openai", "")
+service_name = os.getenv("LLM_SERVICE", "openai").lower()
+strategy = get_llm_strategy(service_name, "")
 llm = strategy.initialize()
 
 order_agent = get_order_agent(llm)
@@ -59,7 +59,7 @@ customer_team = get_customer_team(llm, agents=[customer_agent])
 def run_workflow(user_input: str, command,session_id: str,came_from_resume:bool =False):
     """Run the complete workflow with user input"""
     
-    DB_URI = os.getenv("DATABASE_URL_NEW")
+    DB_URI = os.getenv("DATABASE_URL")
     # TOP LEVEL SUPERVISOR
     with PostgresSaver.from_conn_string(DB_URI) as checkpointer:
         #checkpointer.setup() #onetime 

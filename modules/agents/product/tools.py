@@ -1,16 +1,16 @@
 import logging
 from typing import  Optional,Dict
 from langchain_core.tools import tool
+from langchain.tools import Tool
+from langchain_core.prompts import ChatPromptTemplate
+from langchain.output_parsers import PydanticOutputParser
+from datetime import datetime, timedelta,timezone
+import urllib.parse
 from .schemas import ProductDescription,TopSellingProductsInput,CreateProductInput,ViewProductInput,SearchProductsInput,UpdateProductInput,DeleteProductInput
 from modules.magento.client import magento_client
 from utils.log import Logger
 from modules.magento_tools.human import add_human_in_the_loop
-from langchain.tools import Tool
-from langchain_core.prompts import ChatPromptTemplate
-from langchain.output_parsers import PydanticOutputParser
-from pydantic import BaseModel
-from datetime import datetime, timedelta,timezone
-import urllib.parse
+
 logger=Logger(name="product_tools", log_file="Logs/app.log", level=logging.DEBUG)
 
 def error_response(action: str, error: Exception) -> Dict:
@@ -297,7 +297,6 @@ def delete_product(sku: str):
         return {"error": f"Failed to delete product {sku}: {str(e)}"}
     
 delete_product_with_hitl = add_human_in_the_loop(delete_product) 
-
 
 
 def enhance_product_description_tool(llm):

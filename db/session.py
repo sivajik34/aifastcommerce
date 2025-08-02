@@ -3,14 +3,14 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from contextlib import asynccontextmanager
-from config import DATABASE_URL
+from config import DATABASE_URL_ASYNC
 from typing import AsyncGenerator
 
 
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL is not set in the environment.")
+if not DATABASE_URL_ASYNC:
+    raise ValueError("DATABASE_URL_ASYNC is not set in the environment.")
 
-async_engine = create_async_engine(DATABASE_URL, echo=True)
+async_engine = create_async_engine(DATABASE_URL_ASYNC, echo=True)
 
 async_session_maker = sessionmaker(
     async_engine, expire_on_commit=False, class_=AsyncSession
