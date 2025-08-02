@@ -46,8 +46,21 @@ MAGENTO_CONSUMER_KEY=your_key
 MAGENTO_CONSUMER_SECRET=your_secret
 MAGENTO_ACCESS_TOKEN=your_token
 MAGENTO_ACCESS_TOKEN_SECRET=your_token_secret
+MAGENTO_VERIFY_SSL=bool
 
 OPENAI_API_KEY=your_openai_key
-POSTGRES_URL=your_postgres
+OPENAI_KEY=your_openai_key
+OPENAI_MODEL=your_openai_model
+LLM_SERVICE=your_llm_service
+
+SECRET=your_supersecretkey
+JWT_LIFETIME_SECONDS=3600
+
+DATABASE_URL_ASYNC=postgresql+asyncpg://digipin_user:digipin_pass@postgres:5432/digipin
+DATABASE_URL=postgresql://digipin_user:digipin_pass@127.0.0.1:5432/digipin
+CON_STR="host=localhost port=5432 dbname=digipin user=digipin_user password=digipin_pass"
+
+
+
 
 uvicorn app.main:app --reload
