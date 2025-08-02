@@ -41,3 +41,15 @@ class SearchProductsInput(BaseModel):
 
 class DeleteProductInput(BaseModel):
     sku: str
+
+class TopSellingProductsInput(BaseModel):
+    limit: int = Field(10, description="Number of top-selling products to return")
+    last_n_days: Optional[int] = Field(7, description="Number of days to look back for sales data (optional)")
+    rank_by: Optional[Literal["quantity", "revenue"]] = Field(
+        default="quantity",
+        description="Rank products by 'quantity' sold or 'revenue' generated."
+    )
+
+class ProductDescription(BaseModel):
+    short_description: str
+    description: str

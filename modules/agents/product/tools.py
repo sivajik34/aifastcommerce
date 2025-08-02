@@ -1,7 +1,7 @@
 import logging
 from typing import  Optional,Dict
 from langchain_core.tools import tool
-from .schemas import CreateProductInput,ViewProductInput,SearchProductsInput,UpdateProductInput,DeleteProductInput
+from .schemas import ProductDescription,TopSellingProductsInput,CreateProductInput,ViewProductInput,SearchProductsInput,UpdateProductInput,DeleteProductInput
 from modules.magento.client import magento_client
 from utils.log import Logger
 from modules.magento_tools.human import add_human_in_the_loop
@@ -9,6 +9,8 @@ from langchain.tools import Tool
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.output_parsers import PydanticOutputParser
 from pydantic import BaseModel
+from datetime import datetime, timedelta,timezone
+import urllib.parse
 logger=Logger(name="product_tools", log_file="Logs/app.log", level=logging.DEBUG)
 
 def error_response(action: str, error: Exception) -> Dict:
@@ -296,9 +298,7 @@ def delete_product(sku: str):
     
 delete_product_with_hitl = add_human_in_the_loop(delete_product) 
 
-class ProductDescription(BaseModel):
-    short_description: str
-    description: str
+
 
 def enhance_product_description_tool(llm):
     """
@@ -379,5 +379,73 @@ def enhance_product_description_tool(llm):
         name="enhance_product_description_by_sku",
         description="Enhances or generates product short_description and description based on SKU using LLM.",
         func=_enhance_description
-    )               
-tools=[view_product,search_products,update_product,create_product,delete_product_with_hitl]     
+    )
+
+@tool(args_schema=TopSellingProductsInput)
+def top_selling_products(limit: int = 10, last_n_days: Optional[int] = 7,rank_by: str = "quantity") -> list:
+    """
+    Fetches top-selling product SKUs from Magento orders within the last N days.
+
+    Args:
+        limit (int): Number of top-selling products to return. Defaults to 10.
+        last_n_days (int): Time window in days to consider orders from. Defaults to 7.
+        rank_by (str): Rank products by 'quantity' or 'revenue'. Defaults to 'quantity'.
+
+    Returns:
+        List[Dict[str, Any]]: List of top-selling SKUs with total quantity or revenue.
+    """
+    try:
+        now = datetime.now(timezone.utc)
+        from_date = (now - timedelta(days=last_n_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # Encode searchCriteria into query string
+        filters = {
+            "searchCriteria[filterGroups][0][filters][0][field]": "created_at",
+            "searchCriteria[filterGroups][0][filters][0][value]": from_date,
+            "searchCriteria[filterGroups][0][filters][0][conditionType]": "gteq",
+            "searchCriteria[pageSize]": "100"
+        }
+        query_string = urllib.parse.urlencode(filters)
+
+        endpoint = f"orders?{query_string}"
+
+        response = magento_client.send_request(
+            method="GET",
+            endpoint=endpoint
+        )
+
+        items = response.get("items", [])
+        product_sales = {}
+
+        for order in items:
+            for item in order.get("items", []):
+                sku = item.get("sku")
+                qty = item.get("qty_ordered", 0)
+                price = item.get("price", 0.0)
+                if not sku:
+                    continue
+
+                if rank_by == "revenue":
+                    # Sum revenue: price * qty
+                    product_sales[sku] = product_sales.get(sku, 0.0) + (price * qty)
+                else:
+                    # Default: sum quantity ordered
+                    product_sales[sku] = product_sales.get(sku, 0) + qty
+
+        sorted_sales = sorted(product_sales.items(), key=lambda x: x[1], reverse=True)
+
+        if rank_by == "revenue":
+            return [
+                {"sku": sku, "total_revenue": round(revenue, 2)}
+                for sku, revenue in sorted_sales[:limit]
+            ]
+        else:
+            return [
+                {"sku": sku, "quantity_ordered": qty}
+                for sku, qty in sorted_sales[:limit]
+            ]
+
+    except Exception as e:
+        return [{"error": f"Failed to retrieve top-selling products: {str(e)}"}]
+               
+tools=[top_selling_products,view_product,search_products,update_product,create_product,delete_product_with_hitl]     

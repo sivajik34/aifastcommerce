@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 from modules.assistant.routes import router as assistant_router
@@ -37,7 +37,7 @@ def health_check() -> dict:
     """
     return {
         "status": "Magento AI Commerce backend is running 🚀",
-        "timestamp": datetime.utcnow().isoformat() + "Z"
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 
