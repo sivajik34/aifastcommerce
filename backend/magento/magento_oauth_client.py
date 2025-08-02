@@ -160,7 +160,7 @@ class MagentoOAuthClient:
             formatted_endpoint = self.build_endpoint(endpoint, store_view_code, api_version)
             full_url = urljoin(self.base_url.rstrip('/') + '/', formatted_endpoint.lstrip('/'))
             logger.info(full_url)
-            logger.info(json_data)
+            logger.info(f"payload:{json_data}")
             
             # Make the request with OAuth1 authentication
             response = self.session.request(
