@@ -1,3 +1,4 @@
+import os
 import logging
 from typing import  Optional,Dict
 from langchain_core.tools import tool
@@ -12,7 +13,8 @@ from utils.log import Logger
 from magento_tools.human import add_human_in_the_loop
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
-
+from langgraph.prebuilt.interrupt import HumanInterrupt
+from langgraph.types import interrupt
 logger=Logger(name="product_tools", log_file="Logs/app.log", level=logging.DEBUG)
 
 magento_client=get_magento_client()
@@ -454,13 +456,13 @@ def top_selling_products(limit: int = 10, last_n_days: Optional[int] = 7,rank_by
 
 
 def suggest_related_products_tool(llm) -> Tool:
-    import os
+    
     openai_key = os.getenv("OPENAI_API_KEY")
     faiss_catalog = FAISS.load_local("vectorstores/faiss_catalog", OpenAIEmbeddings(openai_api_key=openai_key), allow_dangerous_deserialization=True)
     
     from langchain_core.output_parsers import JsonOutputParser
-    parser = JsonOutputParser(pydantic_object=RelatedProductsOutput)
     from langchain_core.prompts import PromptTemplate
+    parser = JsonOutputParser(pydantic_object=RelatedProductsOutput)    
     prompt = PromptTemplate.from_template("""
 You are an expert product recommendation engine.
 
@@ -492,20 +494,43 @@ Nearby products:
 
         # 3. Save each related SKU individually in Magento using your payload & endpoint format
         logger.info(f"suggested related skus by llm:{result.related_skus}")
-        for idx, rsku in enumerate(result.related_skus):
-            payload = {
-        "items": [
-            {
-                "sku": sku,
-                "link_type": "related",
-                "linked_product_sku": rsku,
-                "linked_product_type": "simple",
-                "position": idx
-            }
-        ]
-    }
-            endpoint = f"products/{sku}/links"
-            magento_client.send_request(endpoint=endpoint, method="POST", data=payload)
+        
+        interrupt_config = {
+            "allow_accept": True,
+            #"allow_edit": True,
+            "allow_respond": True,
+        }
+
+        request: HumanInterrupt = {
+        "action_request": {
+            "action": "suggest_related_products_by_sku",
+            "args": {"sku": sku, "related_skus": result.related_skus}
+        },
+        "config": interrupt_config,  # define your interrupt_config or pass as needed
+        "description": (
+            f"Please review the related products suggested for SKU '{sku}':\n"
+            f"{result.related_skus}\n\nApprove to save in Magento?"
+        )
+    }   
+        #responses = interrupt([request])
+        response = interrupt([request])[0] 
+        if response["type"] == "accept": 
+            for idx, rsku in enumerate(result.related_skus):
+                payload = {
+            "items": [
+                {
+                    "sku": sku,
+                    "link_type": "related",
+                    "linked_product_sku": rsku,
+                    "linked_product_type": "simple",
+                    "position": idx
+                }
+            ]
+        }
+                endpoint = f"products/{sku}/links"
+                magento_client.send_request(endpoint=endpoint, method="POST", data=payload)
+        else:
+            return {"message": "User rejected saving related products.", "related_skus": []}        
 
         return result
 
