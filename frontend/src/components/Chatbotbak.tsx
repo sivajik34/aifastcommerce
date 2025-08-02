@@ -5,6 +5,7 @@ interface Message {
   text: string;
 }
 
+// Generate a valid UUID v4 for the session
 function generateUserId(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
     const r = Math.random() * 16 | 0;
@@ -38,48 +39,41 @@ export default function Chatbot() {
     setInput("");
     setIsLoading(true);
 
-    const controller = new AbortController();
-    const signal = controller.signal;
-
     try {
-      const response = await fetch("/assistant/chat/stream", {
+      const response = await fetch("/assistant/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           session_id: userId,
           message: userMessage,
         }),
-        signal,
       });
 
-      if (!response.ok || !response.body) {
-        throw new Error(`HTTP ${response.status}: Unable to connect to assistant.`);
+      const data = await response.json();
+
+      if (response.status === 500 && data.error) {
+        throw new Error(data.error);
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder("utf-8");
-
-      let botResponse = "";
-      setMessages((msgs) => [...msgs, { from: "bot", text: "" }]);
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        botResponse += chunk;
-
-        setMessages((msgs) => {
-          const updated = [...msgs];
-          const last = updated[updated.length - 1];
-          if (last && last.from === "bot") {
-            updated[updated.length - 1] = { ...last, text: botResponse };
-          }
-          return updated;
-        });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${data.detail || "Request failed"}`);
       }
+
+      // Handle interruption from backend
+      if (data.interruption) {
+        setPendingAction(data.interruption);
+        setMessages((msgs) => [...msgs, { from: "system", text: data.response }]);
+        return;
+      }
+
+      const newBotMessage: Message = {
+        from: "bot",
+        text: data.response || "No response received.",
+      };
+
+      setMessages((msgs) => [...msgs, newBotMessage]);
     } catch (error) {
-      console.error("Streaming error:", error);
+      console.error("Chat error:", error);
       setMessages((msgs) => [
         ...msgs,
         {
@@ -95,6 +89,7 @@ export default function Chatbot() {
   async function resumeAction(actionType: "accept" | "edit" | "reject", editedArgs: any = {}) {
     if (!pendingAction) return;
 
+    // Construct action payload matching backend API expectations
     const actionPayload =
       actionType === "edit"
         ? {
@@ -155,6 +150,7 @@ export default function Chatbot() {
 
   return (
     <div className="flex flex-col h-full max-h-screen bg-gray-50">
+      {/* Header */}
       <div className="flex justify-between items-center p-4 bg-white border-b shadow-sm">
         <h2 className="text-lg font-semibold text-gray-800">Magento AI Assistant</h2>
         <button
@@ -166,6 +162,7 @@ export default function Chatbot() {
         </button>
       </div>
 
+      {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((msg, idx) => (
           <div
@@ -186,6 +183,7 @@ export default function Chatbot() {
           </div>
         ))}
 
+        {/* Pending Action UI */}
         {pendingAction && (
           <div className="bg-yellow-50 p-4 rounded-md border border-yellow-300 text-sm text-yellow-800">
             <div className="mb-2">
@@ -204,8 +202,7 @@ export default function Chatbot() {
                   resumeAction("edit", {
                     args: {
                       ...pendingAction.args,
-                      sku:
-                        prompt("Enter new SKU:", pendingAction.args?.sku) || pendingAction.args?.sku,
+                      sku: prompt("Enter new SKU:", pendingAction.args?.sku) || pendingAction.args?.sku,
                     },
                   })
                 }
@@ -229,7 +226,8 @@ export default function Chatbot() {
           </div>
         )}
 
-        {isLoading && messages[messages.length - 1]?.text === "" && (
+        {/* Loading indicator */}
+        {isLoading && (
           <div className="flex justify-start">
             <div className="bg-white rounded-lg p-3 border shadow-sm">
               <div className="flex items-center space-x-2">
@@ -244,7 +242,7 @@ export default function Chatbot() {
                     style={{ animationDelay: "0.2s" }}
                   ></div>
                 </div>
-                <span className="text-sm text-gray-500">Assistant is responding...</span>
+                <span className="text-sm text-gray-500">Assistant is thinking...</span>
               </div>
             </div>
           </div>
@@ -253,6 +251,7 @@ export default function Chatbot() {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Input */}
       <div className="p-4 bg-white border-t">
         <div className="flex gap-3 max-w-4xl mx-auto">
           <textarea

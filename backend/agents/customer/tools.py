@@ -79,11 +79,13 @@ def create_customer(
             data=payload
         )
         return {
-            "message": "Customer created successfully",
+            "message": f"✅ Customer {response.get('firstname')} {response.get('lastname')} with email {email} created successfully.",
             "customer_id": response.get("id"),
             "email": response.get("email"),
             "name": f"{response.get('firstname')} {response.get('lastname')}",
-            "status":"success"
+            "firstname": response.get("firstname"),
+            "lastname": response.get("lastname"),
+            "status":"success","done": True
 
         }
     except Exception as e:
