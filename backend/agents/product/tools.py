@@ -6,10 +6,12 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain.output_parsers import PydanticOutputParser
 from datetime import datetime, timedelta,timezone
 import urllib.parse
-from .schemas import ProductDescription,TopSellingProductsInput,CreateProductInput,ViewProductInput,SearchProductsInput,UpdateProductInput,DeleteProductInput
+from .schemas import RelatedProductsOutput,RelatedProductsInput,ProductDescription,TopSellingProductsInput,CreateProductInput,ViewProductInput,SearchProductsInput,UpdateProductInput,DeleteProductInput
 from magento.client import get_magento_client
 from utils.log import Logger
 from magento_tools.human import add_human_in_the_loop
+from langchain_community.vectorstores import FAISS
+from langchain_openai import OpenAIEmbeddings
 
 logger=Logger(name="product_tools", log_file="Logs/app.log", level=logging.DEBUG)
 
@@ -448,5 +450,70 @@ def top_selling_products(limit: int = 10, last_n_days: Optional[int] = 7,rank_by
 
     except Exception as e:
         return [{"error": f"Failed to retrieve top-selling products: {str(e)}"}]
+
+
+
+def suggest_related_products_tool(llm) -> Tool:
+    import os
+    openai_key = os.getenv("OPENAI_API_KEY")
+    faiss_catalog = FAISS.load_local("vectorstores/faiss_catalog", OpenAIEmbeddings(openai_api_key=openai_key), allow_dangerous_deserialization=True)
+    
+    from langchain_core.output_parsers import JsonOutputParser
+    parser = JsonOutputParser(pydantic_object=RelatedProductsOutput)
+    from langchain_core.prompts import PromptTemplate
+    prompt = PromptTemplate.from_template("""
+You are an expert product recommendation engine.
+
+Given a product SKU and a list of nearby products from a vector store, identify 3 to 5 SKUs that are most related to the input SKU.
+
+Respond with only JSON using the format: {format_instructions}
+
+Input SKU: {sku}
+
+Nearby products:
+{similar_products}
+""".strip())
+
+    def _suggest_and_assign_related_products(sku: str) -> RelatedProductsOutput:
+        # 1. Find similar products with FAISS
+        docs = faiss_catalog.similarity_search(sku, k=10)
+        similar = [f"{doc.metadata['sku']}: {doc.metadata['name']}" for doc in docs if doc.metadata.get("sku") != sku]
+        similar_text = "\n".join(similar)
+
+        # 2. Generate structured related SKUs via LLM
+        input_prompt = prompt.format(
+            sku=sku,
+            similar_products=similar_text,
+            format_instructions=parser.get_format_instructions()
+        )
+
+        structured_llm_chain = llm.with_structured_output(RelatedProductsOutput)
+        result: RelatedProductsOutput = structured_llm_chain.invoke(input_prompt)
+
+        # 3. Save each related SKU individually in Magento using your payload & endpoint format
+        logger.info(f"suggested related skus by llm:{result.related_skus}")
+        for idx, rsku in enumerate(result.related_skus):
+            payload = {
+        "items": [
+            {
+                "sku": sku,
+                "link_type": "related",
+                "linked_product_sku": rsku,
+                "linked_product_type": "simple",
+                "position": idx
+            }
+        ]
+    }
+            endpoint = f"products/{sku}/links"
+            magento_client.send_request(endpoint=endpoint, method="POST", data=payload)
+
+        return result
+
+    return Tool.from_function(
+        name="suggest_related_products_by_sku",
+        description="Suggests and saves related products for a given SKU using vector similarity + LLM judgment.",
+        func=_suggest_and_assign_related_products,
+        args_schema=RelatedProductsInput
+    )
                
 tools=[top_selling_products,view_product,search_products,update_product,create_product,delete_product_with_hitl]     

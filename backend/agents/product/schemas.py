@@ -53,3 +53,9 @@ class TopSellingProductsInput(BaseModel):
 class ProductDescription(BaseModel):
     short_description: str
     description: str
+
+class RelatedProductsInput(BaseModel):
+    sku: str = Field(..., description="SKU of the product to find and assign related products for.")
+
+class RelatedProductsOutput(BaseModel):
+    related_skus: list[str] = Field(..., description="List of SKUs that are related to the given SKU.")

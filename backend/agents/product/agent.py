@@ -1,11 +1,12 @@
 from langgraph.prebuilt import create_react_agent
-from .tools import tools,enhance_product_description_tool
+from .tools import tools,enhance_product_description_tool,suggest_related_products_tool
 
 def get_product_agent(llm):
     enhance_product_description = enhance_product_description_tool(llm)
+    suggest_related_products = suggest_related_products_tool(llm)
     return create_react_agent(
         llm,
-        tools+[enhance_product_description],
+        tools+[enhance_product_description,suggest_related_products],
         name="product_agent",
         prompt="""You are a product management specialist for an e-commerce platform.        
             
