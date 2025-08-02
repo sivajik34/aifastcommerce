@@ -140,7 +140,6 @@ def resume_agent(
 
         # Build the Command object with the resume action
         command = Command(resume=[action])
-
         
         result = run_workflow("",command, session_id,True)
 
@@ -162,7 +161,6 @@ def resume_agent(
                 "response": "Unable to resume the agent due to an internal error."
             }
         )
-
 
 
 @router.delete("/chat/{session_id}")

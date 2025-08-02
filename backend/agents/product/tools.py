@@ -7,11 +7,13 @@ from langchain.output_parsers import PydanticOutputParser
 from datetime import datetime, timedelta,timezone
 import urllib.parse
 from .schemas import ProductDescription,TopSellingProductsInput,CreateProductInput,ViewProductInput,SearchProductsInput,UpdateProductInput,DeleteProductInput
-from modules.magento.client import magento_client
+from magento.client import get_magento_client
 from utils.log import Logger
-from modules.magento_tools.human import add_human_in_the_loop
+from magento_tools.human import add_human_in_the_loop
 
 logger=Logger(name="product_tools", log_file="Logs/app.log", level=logging.DEBUG)
+
+magento_client=get_magento_client()
 
 def error_response(action: str, error: Exception) -> Dict:
     return {"error": f"Failed to {action}: {str(error)}"}

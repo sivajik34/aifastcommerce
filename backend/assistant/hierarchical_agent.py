@@ -9,19 +9,19 @@ from langgraph.checkpoint.postgres import PostgresSaver
 from utils.memory import store
 from utils.embedding import initialize_embeddings_and_retriever
 
-from modules.agents.customer.agent import get_customer_agent
-from modules.agents.order.agent import get_order_agent
-from modules.agents.product.agent import get_product_agent
-from modules.agents.stock.agent import get_stock_agent
-from modules.agents.category.agent import get_category_agent
-from modules.agents.invoice.agent import get_invoice_agent
-from modules.agents.shipment.agent import get_shipment_agent
+from agents.customer.agent import get_customer_agent
+from agents.order.agent import get_order_agent
+from agents.product.agent import get_product_agent
+from agents.stock.agent import get_stock_agent
+from agents.category.agent import get_category_agent
+from agents.invoice.agent import get_invoice_agent
+from agents.shipment.agent import get_shipment_agent
 
-from modules.supervisors.catalog_team import get_catalog_team
-from modules.supervisors.customer_team import get_customer_team
-from modules.supervisors.sales_team import get_sales_team
+from supervisors.catalog_team import get_catalog_team
+from supervisors.customer_team import get_customer_team
+from supervisors.sales_team import get_sales_team
 
-from modules.llm.factory import get_llm_strategy
+from llm.factory import get_llm_strategy
 from utils.log import Logger
 
 logger = Logger(name="supervisor", log_file="Logs/app.log", level=logging.DEBUG)

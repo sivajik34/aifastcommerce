@@ -3,10 +3,12 @@ from typing import  List,Optional
 from datetime import datetime, timedelta
 from langchain_core.tools import tool
 from .schemas import CreateOrderInput,OrderItem,GetOrderByIncrementIdInput,GetOrderIdInput,CancelOrderInput,GetOrdersInput
-from modules.magento.client import magento_client
+from magento.client import get_magento_client
 from utils.log import Logger
 
 logger=Logger(name="order_tools", log_file="Logs/app.log", level=logging.DEBUG)
+
+magento_client=get_magento_client()
 
 @tool(args_schema=CreateOrderInput)
 def create_order_for_customer(

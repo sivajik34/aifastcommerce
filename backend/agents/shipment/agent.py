@@ -1,6 +1,6 @@
 from langgraph.prebuilt import create_react_agent
 from .tools import tools
-from modules.magento_tools.shared_order_tools import tools as order_tools
+from magento_tools.shared_order_tools import tools as order_tools
 
 def get_shipment_agent(llm):
     return create_react_agent(

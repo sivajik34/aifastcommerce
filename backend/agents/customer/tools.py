@@ -1,10 +1,13 @@
 import logging
 from langchain_core.tools import tool
 from .schemas import ViewCustomerInput,CreateCustomerInput,AddressInput
-from modules.magento.client import magento_client
+from magento.client import get_magento_client
 from typing import  Optional
 from utils.log import Logger
+
 logger=Logger(name="customer_tools", log_file="Logs/app.log", level=logging.DEBUG)
+
+magento_client=get_magento_client()
 
 @tool(args_schema=ViewCustomerInput)
 def get_customer_info(email: str):

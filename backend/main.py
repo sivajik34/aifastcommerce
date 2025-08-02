@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 from datetime import datetime, timezone
 import logging
 
-from modules.assistant.routes import router as assistant_router
+from assistant.routes import router as assistant_router
 
 from utils.log import Logger
 

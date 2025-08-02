@@ -3,10 +3,12 @@ from typing import  Dict,List
 from urllib.parse import urlencode
 from langchain_core.tools import tool
 from .schemas import LowStockAlertInput,UpdateStockInput
-from modules.magento.client import magento_client
+from magento.client import get_magento_client
 from utils.log import Logger
 
 logger=Logger(name="stock_tools", log_file="Logs/app.log", level=logging.DEBUG)
+
+magento_client=get_magento_client()
 
 @tool(args_schema=UpdateStockInput)
 def update_stock_qty(sku: str, qty: float, is_in_stock: bool = True):

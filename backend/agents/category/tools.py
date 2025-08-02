@@ -2,11 +2,14 @@ import logging
 from typing import  List,Dict
 from langchain_core.tools import tool
 from .schemas import CreateCategoryInput,AssignCategoryInput,CategoryMetadata,DeleteCategoryInput 
-from modules.magento.client import magento_client
+from magento.client import get_magento_client
 from utils.log import Logger
-from modules.magento_tools.human import add_human_in_the_loop
+from magento_tools.human import add_human_in_the_loop
 from langchain_core.output_parsers import PydanticOutputParser
+
 logger=Logger(name="category_tools", log_file="Logs/app.log", level=logging.DEBUG)
+
+magento_client=get_magento_client()
 
 @tool
 def list_all_categories() -> dict:

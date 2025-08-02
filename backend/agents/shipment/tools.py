@@ -2,11 +2,12 @@ import logging
 from typing import  List
 from langchain_core.tools import tool
 from .schemas import ShipmentItem,ShipmentInput
-from modules.magento.client import magento_client
+from magento.client import get_magento_client
 from utils.log import Logger
 
 logger=Logger(name="shipment_tools", log_file="Logs/app.log", level=logging.DEBUG)
 
+magento_client=get_magento_client()
 
 @tool(args_schema=ShipmentInput)
 def create_shipment(order_id: int, items: List[ShipmentItem], notify: bool = True,
