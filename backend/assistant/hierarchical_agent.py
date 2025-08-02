@@ -1,6 +1,5 @@
 import os
 import logging
-import re
 from dotenv import load_dotenv
 
 from langgraph.types import Command
@@ -26,7 +25,7 @@ from supervisors.sales_team import get_sales_team
 from llm.factory import get_llm_strategy
 from utils.log import Logger
 from collections.abc import AsyncGenerator
-from langchain_core.messages import AIMessage
+
 logger = Logger(name="supervisor", log_file="Logs/app.log", level=logging.DEBUG)
 
 load_dotenv()
@@ -74,9 +73,43 @@ def build_top_level_supervisor(llm, sales_team, catalog_team, customer_team, che
         output_mode="full_history"
     ).compile(checkpointer=checkpointer, store=store, name="top_level_supervisor")
 
-    return top_level_supervisor
+    return top_level_supervisor  
 
+async def run_workflow_stream(user_input: str, command: Command, session_id: str,came_from_resume: bool = False) -> AsyncGenerator[str, None]:
+    embeddings, retriever = initialize_embeddings_and_retriever()
+    llm, sales_team, catalog_team, customer_team = initialize_llm_and_agents()
 
+    DB_URI = os.getenv("DATABASE_URL")
+    async with AsyncPostgresSaver.from_conn_string(DB_URI) as checkpointer:
+        supervisor = build_top_level_supervisor(llm, sales_team, catalog_team, customer_team, checkpointer)
+        if came_from_resume:
+            # Resume from saved command state
+            
+            # This requires that supervisor.invoke supports streaming (like a generator)
+            async for mode,step in supervisor.astream(command, config={"configurable": {"thread_id": session_id}},stream_mode=["messages","updates"]):
+                yield step
+        else:    
+            relevant_docs = retriever.invoke(user_input)
+            context_text = "\n\n".join(doc.page_content for doc in relevant_docs)
+
+            messages = []
+            if context_text.strip():
+                messages.append({
+                    "role": "system",
+                    "content": f"Documentation Context:\n{context_text}"
+                })
+            messages.append({
+                "role": "user",
+                "content": user_input
+            })
+
+            # This requires that supervisor.invoke supports streaming (like a generator)
+            async for mode, step in supervisor.astream({"messages": messages}, config={"configurable": {"thread_id": session_id}},stream_mode=["messages","updates"]):
+                #print(step)
+                #print("\n")
+                yield step
+
+# will be deprecated in favour of streaming
 def run_workflow(user_input: str, command: Command, session_id: str, came_from_resume: bool = False):
     """
     Runs the complete workflow with user input.
@@ -137,48 +170,4 @@ def run_workflow(user_input: str, command: Command, session_id: str, came_from_r
 
         return result
 
-def is_meaningful_response(content: str) -> bool:
-    lower = content.lower()
-    return (
-        "transferring" not in lower and
-        "transferred" not in lower and
-        not lower.startswith("transferring back to") and
-        not lower.startswith("successfully transferred") and
-        not content.startswith("i have successfully") and
-        not content.startswith("if you have any further")
-    )    
-
-async def run_workflow_stream(user_input: str, command: Command, session_id: str,came_from_resume: bool = False) -> AsyncGenerator[str, None]:
-    embeddings, retriever = initialize_embeddings_and_retriever()
-    llm, sales_team, catalog_team, customer_team = initialize_llm_and_agents()
-
-    DB_URI = os.getenv("DATABASE_URL")
-    async with AsyncPostgresSaver.from_conn_string(DB_URI) as checkpointer:
-        supervisor = build_top_level_supervisor(llm, sales_team, catalog_team, customer_team, checkpointer)
-        if came_from_resume:
-            # Resume from saved command state
-            
-            # This requires that supervisor.invoke supports streaming (like a generator)
-            async for mode,step in supervisor.astream(command, config={"configurable": {"thread_id": session_id}},stream_mode=["messages","updates"]):
-                yield step
-        else:    
-            relevant_docs = retriever.invoke(user_input)
-            context_text = "\n\n".join(doc.page_content for doc in relevant_docs)
-
-            messages = []
-            if context_text.strip():
-                messages.append({
-                    "role": "system",
-                    "content": f"Documentation Context:\n{context_text}"
-                })
-            messages.append({
-                "role": "user",
-                "content": user_input
-            })
-
-            # This requires that supervisor.invoke supports streaming (like a generator)
-            async for mode, step in supervisor.astream({"messages": messages}, config={"configurable": {"thread_id": session_id}},stream_mode=["messages","updates"]):
-                #print(step)
-                #print("\n")
-                yield step
                 
