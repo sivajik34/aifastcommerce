@@ -78,6 +78,28 @@ export default function Chatbot() {
           return updated;
         });
       }
+
+      // Try to parse the final bot response to check for action
+      try {
+        const parsed = JSON.parse(botResponse);
+        if (parsed.interruption?.type) {
+          setPendingAction({
+            type: parsed.interruption.type,
+            args: parsed.interruption.args,
+          });
+
+          setMessages((msgs) => [
+            ...msgs.slice(0, -1),
+            {
+              from: "bot",
+              text: parsed.interruption.message || "An action is pending.",
+            },
+          ]);
+        }
+      } catch (err) {
+        // Ignore JSON parsing errors — treat as regular message
+      }
+
     } catch (error) {
       console.error("Streaming error:", error);
       setMessages((msgs) => [
@@ -97,13 +119,8 @@ export default function Chatbot() {
 
     const actionPayload =
       actionType === "edit"
-        ? {
-            type: "edit",
-            args: editedArgs,
-          }
-        : {
-            type: actionType,
-          };
+        ? { type: "edit", args: editedArgs }
+        : { type: actionType };
 
     const payload = {
       session_id: userId,
@@ -116,14 +133,31 @@ export default function Chatbot() {
       setIsLoading(true);
 
       const res = await fetch("/assistant/resume", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(payload),
+});
 
-      const data = await res.json();
+// 🛠️ Read response as text first
+const text = await res.text();
 
-      setMessages((msgs) => [...msgs, { from: "bot", text: data.response }]);
+let botText = text;
+try {
+  const parsed = JSON.parse(text);
+  botText = parsed.interruption?.message || JSON.stringify(parsed, null, 2);
+
+  if (parsed.interruption?.type) {
+    setPendingAction({
+      type: parsed.interruption.type,
+      args: parsed.interruption.args,
+    });
+  }
+} catch {
+  // Not JSON — use plain text as bot message
+}
+
+
+      setMessages((msgs) => [...msgs, { from: "bot", text: botText }]);
     } catch (err) {
       console.error("Resume failed:", err);
       setMessages((msgs) => [...msgs, { from: "bot", text: "Failed to resume agent." }]);
@@ -205,7 +239,8 @@ export default function Chatbot() {
                     args: {
                       ...pendingAction.args,
                       sku:
-                        prompt("Enter new SKU:", pendingAction.args?.sku) || pendingAction.args?.sku,
+                        prompt("Enter new SKU:", pendingAction.args?.sku) ||
+                        pendingAction.args?.sku,
                     },
                   })
                 }

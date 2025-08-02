@@ -159,7 +159,7 @@ async def run_workflow_stream(user_input: str, command: Command, session_id: str
             # Resume from saved command state
             
             # This requires that supervisor.invoke supports streaming (like a generator)
-            async for step in supervisor.astream(command, config={"configurable": {"thread_id": session_id}},stream_mode="messages"):
+            async for mode,step in supervisor.astream(command, config={"configurable": {"thread_id": session_id}},stream_mode=["messages","updates"]):
                 yield step
         else:    
             relevant_docs = retriever.invoke(user_input)
@@ -178,7 +178,7 @@ async def run_workflow_stream(user_input: str, command: Command, session_id: str
 
             # This requires that supervisor.invoke supports streaming (like a generator)
             async for mode, step in supervisor.astream({"messages": messages}, config={"configurable": {"thread_id": session_id}},stream_mode=["messages","updates"]):
-                print(step)
-                print("\n")
+                #print(step)
+                #print("\n")
                 yield step
                 

@@ -207,31 +207,31 @@ async def chat_with_agent_stream(request: ChatRequest):
                         args = action_request.get("args", {})
 
                         logger.info(f"Interrupt tool: {tool_name}, args: {args}")
-
-                        # Yield structured JSON as a string
                         import json
                         yield json.dumps({
-                            "interruption": {
-                                "type": tool_name,
-                                "message": value.get("description", ""),
-                                "args": args
-                            }
-                        })
+        "response": str(interrupt.value),
+        "interruption": {
+            "type": tool_name,
+            "message": value.get("description", ""),
+            "args": args
+        }
+    })
                         return
+                       
                     # Only yield non-empty AI messages that aren't tool calls
                     if isinstance(message, AIMessage):
-                        logging.info("coming1")
+                        
                         if message.content.strip():
-                            logging.info("coming3")
+                            
                             if is_meaningful_response(message.content) and re.match(r".*_agent$", getattr(message, "name", "")):
                                 logger.info(f"✅ Yielding AI content: {message.content}")
                                 yield message.content
                         else:
-                            logging.info("coming4")
+                            
                             pass
                             #logger.debug(f"🛑 Skipping AIMessage with tool_calls or empty content: {message}")
                     else:
-                        logging.info("coming2")
+                        
                         pass
                         #logger.debug(f"⚠️ Skipping non-AIMessage type: {message}")
 
@@ -271,55 +271,40 @@ def resume_agent_stream(
         async def stream_response() -> AsyncGenerator[str, None]:
             result_stream = run_workflow_stream("",command, session_id,True)  # This must return an async generator
             async for chunk in result_stream:
+                try:        
                         
-                        message = chunk[0] if isinstance(chunk, tuple) else chunk
-                        #may be not required
-                        if isinstance(message, dict) and "__interrupt__" in message:
-                            interrupt = message["__interrupt__"][0]
-                            logger.info(f"🛑 Workflow interrupted. Awaiting user input: {interrupt.value}")
-
-                            value = interrupt.value[0]
-                            action_request = value.get("action_request", {})
-                            tool_name = action_request.get("action", "unknown")
-                            args = action_request.get("args", {})
-
-                            logger.info(f"Interrupt tool: {tool_name}, args: {args}")
-
-                            # Yield structured JSON as a string
-                            import json
-                            yield json.dumps({
-                                "interruption": {
-                                    "type": tool_name,
-                                    "message": value.get("description", ""),
-                                    "args": args
-                                }
-                            })
-                            return
-                        # Only yield non-empty AI messages that aren't tool calls
-                        if isinstance(message, AIMessage):
-                            logging.info("coming1")
-                            if message.content.strip():
-                                logging.info("coming3")
-                                if is_meaningful_response(message.content) and re.match(r".*_agent$", getattr(message, "name", "")):
-                                    logger.info(f"✅ Yielding AI content: {message.content}")
-                                    yield message.content
-                            else:
-                                logging.info("coming4")
-                                pass
-                                #logger.debug(f"🛑 Skipping AIMessage with tool_calls or empty content: {message}")
+                    message = chunk[0] if isinstance(chunk, tuple) else chunk
+                    #may be need to add interruption here
+                    
+                    # Only yield non-empty AI messages that aren't tool calls
+                    if isinstance(message, AIMessage):
+                        
+                        if message.content.strip():
+                            
+                            if is_meaningful_response(message.content) and re.match(r".*_agent$", getattr(message, "name", "")):
+                                logger.info(f"✅ Yielding AI content-resume: {message.content}")
+                                yield message.content
                         else:
-                            logging.info("coming2")
+                           
                             pass
-                            #logger.debug(f"⚠️ Skipping non-AIMessage type: {message}")
+                            #logger.debug(f"🛑 Skipping AIMessage with tool_calls or empty content: {message}")
+                    else:
+                        
+                        pass
+                        #logger.debug(f"⚠️ Skipping non-AIMessage type: {message}")
 
-                        #if isinstance(message, str):
-                        #    yield message               
+                    #if isinstance(message, str):
+                    #    yield message
+                except Exception as e:
+                    logger.error(f"❌ Error while streaming-resume: {e}\n{traceback.format_exc()}")
+                    yield "\n[Error] Something went wrong during streaming-resume."                       
             
 
         return StreamingResponse(stream_response(), media_type="text/plain")        
 
     except Exception as e:
-        logger.error(f"❌ Failed to resume agent: {str(e)}")
+        logger.error(f"❌ Error while streaming: {e}\n{traceback.format_exc()}")
+        #yield "\n[Error] Something went wrong during streaming."
         return JSONResponse(
             status_code=500,
             content={
