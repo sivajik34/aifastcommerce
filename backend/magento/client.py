@@ -2,8 +2,10 @@
 
 from utils import common
 from .magento_oauth_client import MagentoOAuthClient
+from functools import lru_cache
 
-def get_magento_client():
+@lru_cache()
+def get_magento_client()-> MagentoOAuthClient:
     env_vars = common.get_required_env_vars([
         "MAGENTO_BASE_URL",
         "MAGENTO_CONSUMER_KEY",

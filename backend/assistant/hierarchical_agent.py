@@ -74,13 +74,6 @@ def build_top_level_supervisor(llm, sales_team, catalog_team, customer_team, che
     return top_level_supervisor
 
 
-# Initialize embeddings and retriever once on module load
-embeddings, retriever = initialize_embeddings_and_retriever()
-
-# Initialize LLM, agents, and teams once on module load
-llm, sales_team, catalog_team, customer_team = initialize_llm_and_agents()
-
-
 def run_workflow(user_input: str, command: Command, session_id: str, came_from_resume: bool = False):
     """
     Runs the complete workflow with user input.
@@ -94,6 +87,12 @@ def run_workflow(user_input: str, command: Command, session_id: str, came_from_r
     Returns:
         Result of the supervisor invocation.
     """
+    # Initialize embeddings and retriever once on module load
+    embeddings, retriever = initialize_embeddings_and_retriever()
+
+    # Initialize LLM, agents, and teams once on module load
+    llm, sales_team, catalog_team, customer_team = initialize_llm_and_agents()
+
     DB_URI = os.getenv("DATABASE_URL")
     with PostgresSaver.from_conn_string(DB_URI) as checkpointer:
         # Build supervisor inside the checkpoint context

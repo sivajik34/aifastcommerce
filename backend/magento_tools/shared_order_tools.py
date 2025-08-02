@@ -2,10 +2,13 @@ import logging
 from typing import  List,Optional
 from langchain_core.tools import tool
 from agents.order.schemas import OrderItem,GetOrderByIncrementIdInput,GetOrderIdInput
-from magento.client import magento_client
+from magento.client import get_magento_client
 from utils.log import Logger
 
 logger=Logger(name="shared_order_tools", log_file="Logs/app.log", level=logging.DEBUG)
+
+magento_client=get_magento_client()
+
 
 @tool(args_schema=GetOrderByIncrementIdInput)
 def get_order_info_by_increment_id(increment_id: str) -> dict:
