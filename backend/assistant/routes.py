@@ -7,7 +7,7 @@ import re
 import json
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
-from langchain_core.messages import AIMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.types import interrupt
 from langgraph.types import Command
 from fastapi import Body
@@ -17,6 +17,8 @@ from .schema import ChatRequest, ChatResponse
 from .hierarchical_agent import run_workflow # will be deprecated
 from .hierarchical_agent import run_workflow_stream
 from utils.log import Logger
+from .chat_history import chat_history_manager
+from fastapi import BackgroundTasks
 
 logger = Logger(name="agent_routes", log_file="Logs/app.log", level=logging.DEBUG)
 
@@ -86,23 +88,45 @@ async def stream_agent_response(
         yield "\n[Error] Something went wrong during streaming."
 
 @router.post("/chat/stream")
-async def chat_with_agent_stream(request: ChatRequest):
+async def chat_with_agent_stream(request: ChatRequest, background_tasks: BackgroundTasks):
     try:
         session_id = request.session_id
         if not session_id:
             raise HTTPException(status_code=400, detail="session_id is required")
+        
+        user_msg = HumanMessage(content=request.message)
+        await chat_history_manager.add_message(session_id, user_msg)
 
         logger.info(f"💬 (Streaming) Processing chat for user {session_id}: {request.message[:50]}...")
 
-        return StreamingResponse(
-            stream_agent_response(
+        bot_response_text = ""
+
+        async def wrapped_stream_agent_response():
+            nonlocal bot_response_text
+            async for chunk in stream_agent_response(
                 user_input=request.message,
                 command="",
                 session_id=session_id,
                 came_from_resume=False
-            ),
-            media_type="text/plain"
-        )
+            ):
+                
+                bot_response_text += chunk
+                yield chunk
+
+        async def save_bot_message_after_stream():
+            # Wait until streaming_generator is fully consumed
+            # This function will be called by BackgroundTasks after response is sent
+            if bot_response_text.strip():
+                bot_message = AIMessage(content=bot_response_text)
+                await chat_history_manager.add_message(session_id, bot_message)
+
+        # Add background task to save bot message after streaming response completes
+        background_tasks.add_task(save_bot_message_after_stream)        
+
+        # Return streaming response but also save the entire bot response when done
+        response_stream = wrapped_stream_agent_response()
+
+        return StreamingResponse(response_stream, media_type="text/plain")
 
     except Exception as e:
         logger.error(f"❌ Streaming chat error: {str(e)}")
@@ -113,23 +137,42 @@ async def chat_with_agent_stream(request: ChatRequest):
 
 
 @router.post("/resume")
-def resume_agent_stream(
+async def resume_agent_stream(
+    background_tasks: BackgroundTasks,
     session_id: str = Body(..., embed=True),
     action: dict = Body(..., embed=True)
 ):
     try:
         logger.info(f"♻️ Resuming agent for session_id: {session_id} with action: {action}")
         command = Command(resume=[action])
+       
+        await chat_history_manager.add_message(
+            session_id,
+            HumanMessage(content=f"[Resumed Action] {action}")
+        )
 
-        return StreamingResponse(
-            stream_agent_response(
+        bot_response_text = ""
+
+        async def streaming_generator():
+            nonlocal bot_response_text
+            async for chunk in stream_agent_response(
                 user_input="",
                 command=command,
                 session_id=session_id,
                 came_from_resume=True
-            ),
-            media_type="text/plain"
-        )
+            ):
+                bot_response_text += chunk
+                yield chunk
+
+        async def save_bot_message_after_stream():
+            if bot_response_text.strip():
+                
+                bot_message = AIMessage(content=bot_response_text)
+                await chat_history_manager.add_message(session_id, bot_message)
+
+        background_tasks.add_task(save_bot_message_after_stream)
+
+        return StreamingResponse(streaming_generator(), media_type="text/plain")
 
     except Exception as e:
         logger.error(f"❌ Error while streaming: {e}\n{traceback.format_exc()}")
@@ -148,7 +191,7 @@ async def clear_chat_history(session_id: str):
     Useful for testing or when users want to start fresh conversations.
     """
     try:
-        from .chat_history import chat_history_manager
+        
         await chat_history_manager.clear_session(session_id)
         logger.info(f"🗑️ Cleared chat history for user {session_id}")
         
