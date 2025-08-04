@@ -1,5 +1,5 @@
 # 🧠 AI-Powered Magento/Adobe Commerce Assistant
-
+![Screenshot](docs/images/multiagent.png)
 [![FastAPI](https://img.shields.io/badge/FastAPI-async--ready-green.svg)](https://fastapi.tiangolo.com/)
 [![LangChain](https://img.shields.io/badge/LangChain-Agents-blue)](https://www.langchain.com/)
 [![License](https://img.shields.io/github/license/sivajik34/aifastcommerce)](./LICENSE)
