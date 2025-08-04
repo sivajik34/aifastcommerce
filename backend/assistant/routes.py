@@ -22,17 +22,7 @@ from fastapi import BackgroundTasks
 logger = Logger(name="agent_routes", log_file="Logs/app.log", level=logging.DEBUG)
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
-
-def is_meaningful_response(content: str) -> bool:
-    lower = content.lower()
-    return (
-        "transferring" not in lower and
-        "transferred" not in lower and
-        not lower.startswith("transferring back to") and
-        not lower.startswith("successfully transferred") and
-        not content.startswith("i have successfully") and
-        not content.startswith("if you have any further")
-    ) 
+ 
 
 def extract_interrupt_message(message: dict) -> str:
     """Format and return the interruption message."""
@@ -54,6 +44,17 @@ def extract_interrupt_message(message: dict) -> str:
             "args": args
         }
     })
+
+def is_meaningful_response(content: str) -> bool:
+    lower = content.lower()
+    return (
+        "transferring" not in lower and
+        "transferred" not in lower and
+        not lower.startswith("transferring back to") and
+        not lower.startswith("successfully transferred") and
+        not content.startswith("i have successfully") and
+        not content.startswith("if you have any further")
+    )
 
 def is_valid_ai_message(message: AIMessage) -> bool:
     return (
@@ -81,6 +82,16 @@ async def stream_agent_response(
             if is_valid_ai_message(message):
                 logger.info(f"✅ Yielding AI content: {message.content}")
                 yield message.content
+            else:
+                if isinstance(message, str) and is_meaningful_response(message.content):
+                    yield message.content.strip()
+                else:
+                    pass
+                    #if isinstance(message, AIMessage) and message.content:
+                    #    yield message.content.strip()
+                    #else:
+                    #    yield "sorry, there is no proper response."    
+
 
     except Exception as e:
         logger.error(f"❌ Error in stream_agent_response: {e}\n{traceback.format_exc()}")
@@ -237,6 +248,7 @@ async def get_chat_history(session_id: str, limit: int = 50):
             detail=f"Failed to retrieve chat history: {str(e)}"
         )
 
+# deprecated
 def extract_final_response(result) -> str:
     """
     Extracts the most recent meaningful AIMessage from the LangGraph result.

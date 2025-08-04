@@ -2,6 +2,9 @@ from langchain_core.tools import tool
 import logging
 from utils.log import Logger
 logger=Logger(name="utility_tools", log_file="Logs/app.log", level=logging.DEBUG)
+
+#it seems these tools not required, we can deprecate i think
+
 @tool
 def done():
     """Signal that the agent has completed all requested tasks successfully.
