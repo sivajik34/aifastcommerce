@@ -1,7 +1,8 @@
 from langgraph.prebuilt import create_react_agent
-from .tools import tools,enhance_product_description_tool,suggest_product_links_tool
+
 
 def get_product_agent(llm):
+    from .tools import tools,enhance_product_description_tool,suggest_product_links_tool
     enhance_product_description = enhance_product_description_tool(llm)
     suggest_related_products = suggest_product_links_tool(llm,relation_type="related")
     suggest_upsell_products = suggest_product_links_tool(llm, relation_type="upsell")
