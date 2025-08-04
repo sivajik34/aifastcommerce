@@ -104,9 +104,9 @@ async def run_workflow_stream(user_input: str, command: Command, session_id: str
             })
 
             # This requires that supervisor.invoke supports streaming (like a generator)
-            async for mode, step in supervisor.astream({"messages": messages}, config={"configurable": {"thread_id": session_id}},stream_mode=["messages","updates"]):
-                #print(step)
-                #print("\n")
+            async for mode, step in supervisor.astream({"messages": messages}, config={"configurable": {"thread_id": session_id}, "recursion_limit": 50},stream_mode=["messages","updates"]):
+                print(step)
+                print("\n")
                 yield step
 
 # will be deprecated in favour of streaming
