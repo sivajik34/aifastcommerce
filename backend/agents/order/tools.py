@@ -1,5 +1,5 @@
 import logging
-from typing import  List,Optional
+from typing import  List,Optional,Dict
 from datetime import datetime, timedelta
 from langchain_core.tools import tool
 from .schemas import CreateOrderInput,OrderItem,GetOrderByIncrementIdInput,GetOrderIdInput,CancelOrderInput,GetOrdersInput
@@ -17,22 +17,15 @@ def create_order_for_customer(
     lastname: str,
     customer_email: str,
     items: List[OrderItem],
+    billing_address: Dict,
+    shipping_address: Dict,
     payment_method: str = "checkmo"
 ):
     """
     Place an order for a registered customer.     
     """
     logger.info("create_order_for_customer tool invoked")
-    try:
-        # Step 1: Get customer ID by email
-        #endpoint = f"customers/search?searchCriteria[filterGroups][0][filters][0][field]=email&searchCriteria[filterGroups][0][filters][0][value]={customer_email}"
-        #customer_data = magento_client.send_request(endpoint, method="GET")
-        #customers = customer_data.get("items", [])
-        #if not customers:
-            #return {"error": f"No customer found with email {customer_email}"}
-        
-        #customer = customers[0]
-        #customer_id = customer.get("id")
+    try:       
         logger.info(f"customer id:{customer_id}")
         # Step 2: Create a cart (quote) for the customer
         cart_id = magento_client.send_request(
@@ -57,26 +50,13 @@ def create_order_for_customer(
                 data=add_item_payload
             )
 
-        # Step 4: Prepare billing and shipping address (using dummy/fixed data here)
-        address = {
-            "region": "NY",
-            "region_id": 43,
-            "region_code": "NY",
-            "country_id": "US",
-            "street": ["123 Order St"],
-            "telephone": "1234567890",
-            "postcode": "10001",
-            "city": "New York",
-            "firstname": firstname,
-            "lastname": lastname,
-            "email": customer_email
-        }
+       
 
         # Step 5: Set shipping info (including address and shipping method)
         shipping_info_payload = {
             "addressInformation": {
-                "shipping_address": address,
-                "billing_address": address,
+                "shipping_address": shipping_address.dict(),
+                "billing_address": billing_address.dict(),
                 "shipping_method_code": "flatrate",
                 "shipping_carrier_code": "flatrate"
             }
@@ -92,7 +72,7 @@ def create_order_for_customer(
             "method": {
                 "method": payment_method
             },
-            "billing_address": address,
+            "billing_address": billing_address.dict(),
             "email": customer_email
         }
         magento_client.send_request(
@@ -262,7 +242,7 @@ def get_order_id_by_increment(increment_id: str) -> dict:
         if not items:
             return {"error": f"No order found for increment ID {increment_id}"}
         
-        return {"order_id": items[0]["entity_id"], "status": items[0]["status"]}
+        return {"order_id": items[0]["entity_id"], "order_status": items[0]["status"],"status":"success","done":True}
     except Exception as e:
         return {"error": str(e)}
 
@@ -274,7 +254,7 @@ def cancel_order(order_id: int, comment: Optional[str] = None) -> dict:
         endpoint = f"orders/{order_id}/cancel"
         response = magento_client.send_request(endpoint, method="POST")
         return {
-            "success": True,
+            "success": True,"done":True,
             "order_id": order_id,
             "message": comment or "Order cancelled"
         }

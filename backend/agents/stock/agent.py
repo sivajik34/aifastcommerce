@@ -1,7 +1,8 @@
 from langgraph.prebuilt import create_react_agent
-from .tools import tools
+
 
 def get_stock_agent(llm):
+    from .tools import tools
     return create_react_agent(
         llm,
         tools,

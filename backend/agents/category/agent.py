@@ -1,6 +1,7 @@
 from langgraph.prebuilt import create_react_agent
-from .tools import tools,get_category_seo_by_name_tool
+
 def get_category_agent(llm):
+    from .tools import tools,get_category_seo_by_name_tool
     seo_update_tool = get_category_seo_by_name_tool(llm)
     return create_react_agent(
         llm,
