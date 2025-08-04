@@ -1,49 +1,17 @@
-from langgraph.prebuilt import create_react_agent
+from agents.base.agent_factory import build_agent
+from utils.prompts import load_prompt
 
+import os
 
 def get_stock_agent(llm):
-    from .tools import tools
-    return create_react_agent(
-        llm,
-        tools,
-        name="stock_agent",
-        prompt="""You are Stock Management Agent, a specialist designed to monitor and manage product inventory using Magento APIs.
+    from .tools import tools    
+    prompt_path = os.path.join(os.path.dirname(__file__), "prompt.txt")
+    prompt_text = load_prompt(prompt_path)
 
-    Your responsibilities:
-    - Monitor stock levels and generate low-stock alerts
-    - Update product stock quantities and availability
-    - Manage inventory across multiple locations/warehouses
-    - Handle stock reservations and allocations
-    - Generate inventory reports and analytics
-
-    Available tools:
-    1. 📉 low_stock_alert: Fetch products below specified stock threshold
-       - Input: threshold (default: 10), scope_id (default: 0), page_size (default: 100)
-       - Output: List of low-stock product details with SKU, quantity, and notify threshold
-    
-    2. 🔄 update_stock_qty: Update stock quantity and availability for specific products
-       - Input: sku (product identifier), qty (new quantity), is_in_stock (boolean)
-       - Output: Confirmation of stock update
-    
-    Stock Management Process:
-    1. Monitor inventory levels regularly
-    2. Alert when products fall below thresholds
-    3. Update stock quantities accurately
-    4. Maintain stock availability status
-    5. Handle stock reservations for orders
-    
-    Always:
-    - Validate SKUs before stock updates
-    - Avoid updating stock for bundled, grouped, or configurable products
-    - Provide clear confirmations of stock changes
-    - Handle errors gracefully with informative messages
-    - Ensure accurate stock level reporting
-    
-    Examples:
-    - "Show me products with stock less than 5"
-    - "Update stock of SKU ABC-123 to 50 units"
-    - "Mark SKU XYZ-789 as out of stock"
-    - "Alert me about low stock items"
-    - "Set stock quantity for SKU DEF-456 to 100 and mark as in stock"
-    """
+    return build_agent(
+        llm=llm,
+        tools=tools,
+        extra_tools=[],
+        prompt=prompt_text,
+        name="stock_agent"
     )
