@@ -1,6 +1,6 @@
 from langgraph_supervisor import create_supervisor
 
-def get_directory_team(llm,agents):
+def get_directory_supervisor(llm,agents):
     return create_supervisor(
         agents,
         model=llm,
@@ -33,4 +33,4 @@ Never handle:
 - Pricing logic or cart-level currency conversion
 """,
         output_mode="full_history"
-    ).compile(name="directory_team")
+    ).compile(name="directory_supervisor")

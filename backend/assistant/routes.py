@@ -82,11 +82,12 @@ async def stream_agent_response(
             if is_valid_ai_message(message):
                 logger.info(f"✅ Yielding AI content: {message.content}")
                 yield message.content
-            else:
-                if isinstance(message, str) and is_meaningful_response(message.content):
-                    yield message.content.strip()
-                else:
-                    pass
+            #else:
+            #    pass
+                #if isinstance(message, str) and is_meaningful_response(message.content):
+                #    yield message.content.strip()
+                #else:
+                #    pass
                     #if isinstance(message, AIMessage) and message.content:
                     #    yield message.content.strip()
                     #else:

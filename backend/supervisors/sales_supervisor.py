@@ -1,7 +1,7 @@
 from langgraph_supervisor import create_supervisor
 
 
-def get_sales_team(llm, agents):
+def get_sales_supervisor(llm, agents):
     return create_supervisor(
         agents,
         model=llm,
@@ -26,4 +26,4 @@ def get_sales_team(llm, agents):
     Always prioritize customer satisfaction and operational efficiency.
     """,
         output_mode="full_history"
-    ).compile( name="sales_team")
+    ).compile( name="sales_supervisor")

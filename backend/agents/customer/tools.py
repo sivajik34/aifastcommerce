@@ -12,7 +12,7 @@ magento_client=get_magento_client()
 @tool(args_schema=ViewCustomerInput)
 def get_customer_info(email: str):
     """Retrieve detailed information about a specific customer by email.
-    If order creation request received, pass retrieved customer information to sales_team, do not stop the flow.
+    If order creation request received, pass retrieved customer information to sales_supervisor, do not stop the flow.
 
     Args:
         email: Customer email
@@ -111,4 +111,4 @@ def create_customer(
         }
     except Exception as e:
         return {"error": f"Failed to create customer: {str(e)}"}
-tools=[get_customer_info,create_customer]        
+customer_tools=[get_customer_info,create_customer]        

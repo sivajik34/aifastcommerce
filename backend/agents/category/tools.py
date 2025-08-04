@@ -282,7 +282,7 @@ def get_category_seo_by_name_tool(llm):
 
 
     
-tools=[list_all_categories,create_category,assign_product_to_categories,get_category_by_id,
+category_tools=[list_all_categories,create_category,assign_product_to_categories,get_category_by_id,
     update_category,
     add_human_in_the_loop(delete_category),
     get_products_by_category_id, find_category_by_name,

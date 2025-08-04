@@ -51,7 +51,9 @@ def update_stock_qty(sku: str, qty: float, is_in_stock: bool = True):
             "sku": sku,
             "updated_qty": qty,
             "is_in_stock": is_in_stock,
-            "message": f"Stock quantity for SKU '{sku}' updated successfully."
+            "message": f"Stock quantity for SKU '{sku}' updated successfully.",
+            "status":"success",
+            "done":True
         }
 
     except Exception as e:

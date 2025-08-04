@@ -80,7 +80,7 @@ async def run_workflow_stream(
 
     async with AsyncPostgresSaver.from_conn_string(db_url) as checkpointer:
         supervisor = build_supervisor(llm, teams, checkpointer)
-
+        print(supervisor.get_graph().draw_mermaid())
         config = {
             "configurable": {"thread_id": session_id},
             "recursion_limit": 50

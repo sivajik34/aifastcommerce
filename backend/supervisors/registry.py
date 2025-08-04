@@ -8,10 +8,10 @@ from agents.invoice.agent import get_invoice_agent
 from agents.shipment.agent import get_shipment_agent
 from agents.directory.agent import get_directory_agent
 
-from supervisors.catalog_team import get_catalog_team
-from supervisors.customer_team import get_customer_team
-from supervisors.sales_team import get_sales_team
-from supervisors.directory_team import get_directory_team
+from supervisors.catalog_supervisor import get_catalog_supervisor
+from supervisors.customer_supervisor import get_customer_supervisor
+from supervisors.sales_supervisor import get_sales_supervisor
+from supervisors.directory_supervisor import get_directory_supervisor
 
 class TeamConfig:
     def __init__(self, name: str, agent_loaders: List[Callable], team_loader: Callable):
@@ -24,8 +24,8 @@ class TeamConfig:
         return self.team_loader(llm, agents=agents)
 
 TEAM_REGISTRY = [
-    TeamConfig("sales_team", [get_order_agent, get_shipment_agent, get_invoice_agent], get_sales_team),
-    TeamConfig("catalog_team", [get_product_agent, get_category_agent, get_stock_agent], get_catalog_team),
-    TeamConfig("customer_team", [get_customer_agent], get_customer_team),
-    TeamConfig("directory_team", [get_directory_agent], get_directory_team),
+    TeamConfig("sales_supervisor", [get_order_agent, get_shipment_agent, get_invoice_agent], get_sales_supervisor),
+    TeamConfig("catalog_team", [get_product_agent, get_category_agent, get_stock_agent], get_catalog_supervisor),
+    TeamConfig("customer_supervisor", [get_customer_agent], get_customer_supervisor),
+    TeamConfig("directory_supervisor", [get_directory_agent], get_directory_supervisor),
 ]
