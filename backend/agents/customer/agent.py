@@ -15,7 +15,9 @@ def get_customer_agent(llm):
     - Process customer authentication and account security
     - Handle customer inquiries and account-related issues
     - Manage customer groups and segmentation
-    - to create orders use order_agent from sales_team.DO NOT try to use this.
+    - - **If an order creation request is received, do not create the order. Instead:**
+  - Extract and return the required customer details (e.g., customer_id, firstname, lastname)
+  - Indicate clearly that this information is ready to be used by the sales team to create the order
 
     **Crucial Success and Error Handling:**
     - **After successfully creating a customer, provide a clear confirmation message to the user including the customer's name and email, and then signal completion. Do NOT attempt to create the same customer again.**
@@ -49,6 +51,10 @@ def get_customer_agent(llm):
     - "Find customer by email jane.smith@email.com"
     - "Add new address for customer john.doe@email.com"
     - "Update customer preferences for ID 67890"
+
+   
+
+Be helpful, structured, and forward-ready for downstream agents.
     
     If required information is missing, always ask the user to provide it before proceeding.
     """

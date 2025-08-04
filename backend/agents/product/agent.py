@@ -1,15 +1,19 @@
 from langgraph.prebuilt import create_react_agent
-from .tools import tools,enhance_product_description_tool
+from .tools import tools,enhance_product_description_tool,suggest_product_links_tool
 
 def get_product_agent(llm):
     enhance_product_description = enhance_product_description_tool(llm)
+    suggest_related_products = suggest_product_links_tool(llm,relation_type="related")
+    suggest_upsell_products = suggest_product_links_tool(llm, relation_type="upsell")
+    suggest_crosssell_products = suggest_product_links_tool(llm, relation_type="crosssell")
     return create_react_agent(
         llm,
-        tools+[enhance_product_description],
+        tools+[enhance_product_description,suggest_related_products,suggest_upsell_products,suggest_crosssell_products],
         name="product_agent",
         prompt="""You are a product management specialist for an e-commerce platform.        
             
     Your responsibilities:
+    - You can suggest related, upsell, cross-sell products.
     - Search for products based on user queries
     - Provide detailed product information including SKU, name, price, and stock status
     - Help users find products by category, price range, or specific attributes

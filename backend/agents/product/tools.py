@@ -1,3 +1,4 @@
+import os
 import logging
 from typing import  Optional,Dict
 from langchain_core.tools import tool
@@ -6,10 +7,16 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain.output_parsers import PydanticOutputParser
 from datetime import datetime, timedelta,timezone
 import urllib.parse
-from .schemas import ProductDescription,TopSellingProductsInput,CreateProductInput,ViewProductInput,SearchProductsInput,UpdateProductInput,DeleteProductInput
+from .schemas import LinkedProductsOutput,LinkedProductsInput,ProductDescription,TopSellingProductsInput,CreateProductInput,ViewProductInput,SearchProductsInput,UpdateProductInput,DeleteProductInput
 from magento.client import get_magento_client
 from utils.log import Logger
 from magento_tools.human import add_human_in_the_loop
+from langchain_community.vectorstores import FAISS
+from langchain_openai import OpenAIEmbeddings
+from langgraph.prebuilt.interrupt import HumanInterrupt
+from langgraph.types import interrupt
+from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.prompts import PromptTemplate
 
 logger=Logger(name="product_tools", log_file="Logs/app.log", level=logging.DEBUG)
 
@@ -448,5 +455,93 @@ def top_selling_products(limit: int = 10, last_n_days: Optional[int] = 7,rank_by
 
     except Exception as e:
         return [{"error": f"Failed to retrieve top-selling products: {str(e)}"}]
+
+
+def suggest_product_links_tool(llm, relation_type: str) -> Tool:
+    assert relation_type in ("upsell", "crosssell","related"), "Invalid relation type"
+
+    openai_key = os.getenv("OPENAI_API_KEY")
+    faiss_catalog = FAISS.load_local("vectorstores/faiss_catalog", OpenAIEmbeddings(openai_api_key=openai_key), allow_dangerous_deserialization=True)
+    
+    parser = JsonOutputParser(pydantic_object=LinkedProductsOutput)
+
+    prompt = PromptTemplate.from_template("""
+You are an expert product recommendation engine.
+
+Given a product SKU and a list of nearby products from a vector store, identify 3 to 5 SKUs that are most appropriate for {relation_type}.
+
+Respond with only JSON using the format: {format_instructions}
+
+Input SKU: {sku}
+
+Nearby products:
+{similar_products}
+""".strip())
+
+    def _suggest_and_assign_product_links(sku: str) -> LinkedProductsOutput:        
+        link_type = relation_type
+        if link_type not in {"related", "upsell", "crosssell"}:
+            raise ValueError("Invalid link_type. Must be one of: related, upsell, crosssell.")
+        docs = faiss_catalog.similarity_search(sku, k=10)
+        similar = [f"{doc.metadata['sku']}: {doc.metadata['name']}" for doc in docs if doc.metadata.get("sku") != sku]
+        similar_text = "\n".join(similar)
+
+        input_prompt = prompt.format(
+            sku=sku,
+            relation_type=link_type.replace("sell", "-sell"),  # for prompt clarity
+            similar_products=similar_text,
+            format_instructions=parser.get_format_instructions()
+        )
+
+        structured_llm_chain = llm.with_structured_output(LinkedProductsOutput)
+        result: LinkedProductsOutput = structured_llm_chain.invoke(input_prompt)
+
+        logger.info(f"Suggested {link_type} SKUs: {result.linked_skus}")
+
+        interrupt_config = {
+            "allow_accept": True,
+            "allow_respond": True,
+        }
+
+        request: HumanInterrupt = {
+            "action_request": {
+                "action": f"suggest_{link_type}_products_by_sku",
+                "args": {"sku": sku, "linked_skus": result.linked_skus}
+            },
+            "config": interrupt_config,
+            "description": (
+                f"Please review the {link_type.replace('sell', '-sell')} products suggested for SKU '{sku}':\n"
+                f"{result.linked_skus}\n\nApprove to save in Magento?"
+            )
+        }
+
+        response = interrupt([request])[0]
+        if response["type"] == "accept":
+            for idx, rsku in enumerate(result.linked_skus):
+                payload = {
+                    "items": [
+                        {
+                            "sku": sku,
+                            "link_type": link_type,
+                            "linked_product_sku": rsku,
+                            "linked_product_type": "simple",
+                            "position": idx
+                        }
+                    ]
+                }
+                endpoint = f"products/{sku}/links"
+                magento_client.send_request(endpoint=endpoint, method="POST", data=payload)
+        else:
+            return {"message": f"User rejected saving {link_type} products.", "linked_skus": []}
+
+        return result
+
+    return Tool.from_function(
+        name=f"suggest_{relation_type}_products_by_sku",
+        description=f"Suggests and saves {relation_type.replace('sell', '-sell')} products for a given SKU using vector similarity + LLM judgment.",
+        func=_suggest_and_assign_product_links,
+        args_schema=LinkedProductsInput
+    )
+
                
 tools=[top_selling_products,view_product,search_products,update_product,create_product,delete_product_with_hitl]     

@@ -6,7 +6,8 @@ class OrderItem(BaseModel):
     qty: int
 
 class CreateOrderInput(BaseModel):
-    customer_email: EmailStr
+    customer_id: int
+    customer_email:EmailStr
     firstname: str
     lastname: str
     items: List[OrderItem]

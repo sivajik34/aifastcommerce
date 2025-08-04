@@ -11,13 +11,14 @@ magento_client=get_magento_client()
 
 @tool(args_schema=ViewCustomerInput)
 def get_customer_info(email: str):
-    """Retrieve detailed information about a specific customer.
+    """Retrieve detailed information about a specific customer by email.
+    If order creation request  received, pass retrieved customer information to sales_team, do not stop the flow.
     
     Args:
         email: Customer email
         
     Returns:
-        Customer details including name, email.        
+        Customer details including name, email,customer_id.        
     """
     logger.info("get_customer_info tool invoked")
     try:        
@@ -28,10 +29,14 @@ def get_customer_info(email: str):
             for customer in customers:
                 first_name = customer.get("firstname")
                 last_name = customer.get("lastname")
+                customer_id=customer.get("id")
             return {
                 "email": email,
                 "firstname": first_name,
-                "lastname":last_name                
+                "lastname":last_name,
+                "customer_id":customer_id,
+                "status": "success",
+                "done": True                
             }    
         else:
             return ("No Customer found with this email")       

@@ -12,9 +12,10 @@ magento_client=get_magento_client()
 
 @tool(args_schema=CreateOrderInput)
 def create_order_for_customer(
-    customer_email: str,
+    customer_id: int,
     firstname: str,
     lastname: str,
+    customer_email: str,
     items: List[OrderItem],
     payment_method: str = "checkmo"
 ):
@@ -24,14 +25,14 @@ def create_order_for_customer(
     logger.info("create_order_for_customer tool invoked")
     try:
         # Step 1: Get customer ID by email
-        endpoint = f"customers/search?searchCriteria[filterGroups][0][filters][0][field]=email&searchCriteria[filterGroups][0][filters][0][value]={customer_email}"
-        customer_data = magento_client.send_request(endpoint, method="GET")
-        customers = customer_data.get("items", [])
-        if not customers:
-            return {"error": f"No customer found with email {customer_email}"}
+        #endpoint = f"customers/search?searchCriteria[filterGroups][0][filters][0][field]=email&searchCriteria[filterGroups][0][filters][0][value]={customer_email}"
+        #customer_data = magento_client.send_request(endpoint, method="GET")
+        #customers = customer_data.get("items", [])
+        #if not customers:
+            #return {"error": f"No customer found with email {customer_email}"}
         
-        customer = customers[0]
-        customer_id = customer.get("id")
+        #customer = customers[0]
+        #customer_id = customer.get("id")
         logger.info(f"customer id:{customer_id}")
         # Step 2: Create a cart (quote) for the customer
         cart_id = magento_client.send_request(
@@ -106,7 +107,7 @@ def create_order_for_customer(
         order_increment_id = order_response
         logger.info(f"order_increment_id:{order_increment_id}")
         return {                       
-            "order_increment_id": order_increment_id
+            "order_increment_id": order_increment_id,"status":"success","done":True
         }
 
     except Exception as e:

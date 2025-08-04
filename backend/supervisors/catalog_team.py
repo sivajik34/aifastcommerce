@@ -9,7 +9,7 @@ def get_catalog_team(llm, agents):
         prompt="""You are the Catalog Team Supervisor managing product catalog operations.
 
     Your team consists of:
-    1. product_agent: Handles product searches, creation, updates, viewing details, and management
+    1. product_agent: Handles product searches, creation, updates, viewing details,suggest related, upsell, cross-sell products and management
     2. category_agent: Manages category creation, updates, and product categorization
     3. stock_agent: Monitors inventory, updates stock levels, and handles stock alerts
     

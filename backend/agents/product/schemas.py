@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field,validator
 from typing import List, Optional, Literal
    
 class MagentoAPIBase(BaseModel):
@@ -53,3 +53,10 @@ class TopSellingProductsInput(BaseModel):
 class ProductDescription(BaseModel):
     short_description: str
     description: str
+
+class LinkedProductsInput(BaseModel):
+    sku: str = Field(..., description="SKU of the product.")
+   
+
+class LinkedProductsOutput(BaseModel):
+    linked_skus: list[str] = Field(..., description="List of SKUs to link to the given SKU.")
