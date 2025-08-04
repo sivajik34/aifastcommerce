@@ -12,37 +12,53 @@ magento_client=get_magento_client()
 @tool(args_schema=ViewCustomerInput)
 def get_customer_info(email: str):
     """Retrieve detailed information about a specific customer by email.
-    If order creation request  received, pass retrieved customer information to sales_team, do not stop the flow.
-    
+    If order creation request received, pass retrieved customer information to sales_team, do not stop the flow.
+
     Args:
         email: Customer email
-        
+
     Returns:
-        Customer details including name, email,customer_id.        
+        Customer details including name, email, customer_id, and default billing/shipping address (if available).
     """
     logger.info("get_customer_info tool invoked")
-    try:        
-        endpoint=f'customers/search?searchCriteria[filterGroups][0][filters][0][field]=email&searchCriteria[filterGroups][0][filters][0][value]={email}'
-        data=magento_client.send_request(endpoint=endpoint, method="GET")
-        customers=data.get("items",[])
-        if customers:
-            for customer in customers:
-                first_name = customer.get("firstname")
-                last_name = customer.get("lastname")
-                customer_id=customer.get("id")
-            return {
-                "email": email,
-                "firstname": first_name,
-                "lastname":last_name,
-                "customer_id":customer_id,
-                "status": "success",
-                "done": True                
-            }    
-        else:
-            return ("No Customer found with this email")       
+    try:
+        endpoint = f'customers/search?searchCriteria[filterGroups][0][filters][0][field]=email&searchCriteria[filterGroups][0][filters][0][value]={email}'
+        data = magento_client.send_request(endpoint=endpoint, method="GET")
+        customers = data.get("items", [])
         
+        if not customers:
+            return {"error": "No customer found with this email", "done": True}
+
+        customer = customers[0]  # Email is unique, so we expect one result
+
+        first_name = customer.get("firstname")
+        last_name = customer.get("lastname")
+        customer_id = customer.get("id")
+        addresses = customer.get("addresses", [])
+
+        billing_address = None
+        shipping_address = None
+
+        for address in addresses:
+            if address.get("default_billing"):
+                billing_address = address
+            if address.get("default_shipping"):
+                shipping_address = address
+
+        return {
+            "email": email,
+            "firstname": first_name,
+            "lastname": last_name,
+            "customer_id": customer_id,
+            "billing_address": billing_address,
+            "shipping_address": shipping_address,
+            "status": "success",
+            "done": True
+        }
+
     except Exception as e:
-        return {"error": f"Failed to retrieve customer with email '{email}': {str(e)}"}
+        return {"error": f"Failed to retrieve customer with email '{email}': {str(e)}", "done": True}
+
 
 @tool(args_schema=CreateCustomerInput)
 def create_customer(

@@ -18,6 +18,12 @@ Your teams consist of:
 - Customer support and service
 - If you receive an order request creation, Retrieve customer information by email and handover to order_agent in sales_supervisor  to create order.
 
+4. directory_team: managing global metadata related to geography and currency.
+- Providing country and region listings
+- Offering details about specific countries or states
+- Providing currency configuration and details
+- Assisting other teams with location and currency information
+
 Routing Guidelines:
 - Product/category/inventory questions → catalog_team
 - Order/shipping/billing questions → sales_team
