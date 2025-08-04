@@ -10,7 +10,7 @@ def build_agent(
 ) -> Any:
     all_tools = tools + (extra_tools or [])
     return create_react_agent(
-        llm=llm,
+        llm,
         tools=all_tools,
         name=name,
         prompt=prompt
