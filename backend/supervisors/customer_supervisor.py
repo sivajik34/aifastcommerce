@@ -1,7 +1,7 @@
 from langgraph_supervisor import create_supervisor
 
 
-def get_customer_team(llm, agents):
+def get_customer_supervisor(llm, agents):
     return create_supervisor(
         agents,
         model=llm,
@@ -40,4 +40,4 @@ def get_customer_team(llm, agents):
     - Coordinate with other teams when customer issues affect orders or products
     """,output_mode="full_history"
         
-    ).compile( name="customer_team")
+    ).compile( name="customer_supervisor")

@@ -1,4 +1,5 @@
 # redis_client.py
+# as of now we are not using redis any purpose.
 import redis
 import logging
 
