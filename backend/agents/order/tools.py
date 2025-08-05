@@ -22,7 +22,7 @@ def create_order_for_customer(
     payment_method: str = "checkmo"
 ):
     """
-    Place an order for a registered customer.     
+    Place an order for a registered customer.   
     """
     logger.info("create_order_for_customer tool invoked")
     try:       
@@ -191,9 +191,10 @@ def create_order_for_guest(
 
 @tool(args_schema=GetOrderByIncrementIdInput)
 def get_order_info_by_increment_id(increment_id: str) -> dict:
-    """Get full order details using the order increment ID (like 000000123)."""
-
-    logger.info("get_order_info_by_increment_id tool invoked")
+    """
+    Retrieve detailed order information using the Magento order increment ID (e.g., 000000123).
+    """
+    logger.info(f"get_order_info_by_increment_id invoked with increment_id={increment_id}")
     try:
         query_string = (
             "searchCriteria[filterGroups][0][filters][0][field]=increment_id&"
@@ -202,28 +203,57 @@ def get_order_info_by_increment_id(increment_id: str) -> dict:
         )
         endpoint = f"orders?{query_string}"
         response = magento_client.send_request(endpoint, method="GET")
-        if response.get("items"):
-            order = response["items"][0]
-            customer = f"{order['customer_firstname']} {order['customer_lastname']}"
-            items = [
-                f"- {item['name']} (SKU: {item['sku']}), Qty: {item['qty_ordered']}, Price: ${item['price']}"
-                for item in order["items"]
-            ]
-            shipping = order.get("shipping_address", {})
-            shipping_address = f"{shipping.get('firstname', '')} {shipping.get('lastname', '')}, {shipping.get('street', [''])[0]}, {shipping.get('city', '')}, {shipping.get('postcode', '')}"
-            return f"""✅ Order #{order['increment_id']} Details:
-- Customer: {customer} ({order['customer_email']})
-- Status: {order['status']}
-- Total: ${order['grand_total']}
-- Created At: {order['created_at']}
-- Shipping Address: {shipping_address}
-- Items:
-{chr(10).join(items)}"""
-        else:
-            raise Exception(f"No order found with increment ID {increment_id}")
+
+        orders = response.get("items", [])
+        if not orders:
+            return {"error": f"No order found with increment ID {increment_id}", "done": True}
+
+        order = orders[0]
+        return {"order_information":order,"done":True,"status":"success"}
+        shipping = order.get("extension_attributes", {}).get("shipping_assignments", [{}])[0].get("shipping", {}).get("address", {})
+        shipping_address = {
+            "firstname": shipping.get("firstname", ""),
+            "lastname": shipping.get("lastname", ""),
+            "street": shipping.get("street", [""])[0],
+            "city": shipping.get("city", ""),
+            "postcode": shipping.get("postcode", ""),
+            "region": shipping.get("region", {}).get("region", ""),
+            "country_id": shipping.get("country_id", "")
+        }
+
+        order_items = [
+            {
+                "name": item.get("name"),
+                "sku": item.get("sku"),
+                "qty": item.get("qty_ordered"),
+                "price": item.get("price")
+            }
+            for item in order.get("items", [])
+        ]
+
+        result = {
+            "order_id": order.get("entity_id"),
+            "increment_id": order.get("increment_id"),
+            "customer": {
+                "name": f"{order.get('customer_firstname', '')} {order.get('customer_lastname', '')}",
+                "email": order.get("customer_email", "")
+            },
+            "status": order.get("status"),
+            "grand_total": order.get("grand_total"),
+            "currency": order.get("order_currency_code"),
+            "created_at": order.get("created_at"),
+            "shipping_address": shipping_address,
+            "items": order_items,
+            "status_text": "success",
+            "done": True
+        }
+
+        logger.info(f"Order {increment_id} retrieved successfully")
+        return result
+
     except Exception as e:
-        logger.error(f"Failed to get order by increment_id: {e}")
-        raise Exception("Failed to retrieve order using increment ID")
+        logger.error(f"Failed to get order by increment_id={increment_id}: {e}")
+        return {"error": "Failed to retrieve order using increment ID", "done": True}
     
 @tool(args_schema=GetOrderIdInput)
 def get_order_id_by_increment(increment_id: str) -> dict:

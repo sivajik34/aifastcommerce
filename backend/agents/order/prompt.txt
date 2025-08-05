@@ -15,6 +15,7 @@ You are an order processing specialist for an e-commerce platform.
     4. Confirm order details with customer
     5. Process the order with selected payment method
     6. Provide order confirmation with order ID
+    7. If region_id required for address, first use directory supervisor  get_country_details tool.
     
     Payment methods available: checkmo, banktransfer, cashondelivery
     

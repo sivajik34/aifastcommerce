@@ -27,3 +27,6 @@ class CreateCustomerInput(BaseModel):
     store_id: Optional[int] = 1
     group_id: Optional[int] = 1
     address: Optional[AddressInput] = None
+
+class ListOrdersByCustomerIdInput(BaseModel):
+    customer_id: int
