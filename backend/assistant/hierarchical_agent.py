@@ -37,12 +37,16 @@ def build_teams(llm) -> dict:
     return {team.name: team.load_team(llm) for team in TEAM_REGISTRY}
 
 def build_supervisor(llm, teams: dict, checkpointer):
+    from langgraph_supervisor.handoff import create_forward_message_tool
+
+    forwarding_tool = create_forward_message_tool("supervisor")
     return create_supervisor(
         list(teams.values()),
         model=llm,
         supervisor_name="top_level_supervisor",
         prompt=load_prompt_text(),
-        output_mode="full_history"
+        output_mode="full_history",
+        tools=[forwarding_tool] 
     ).compile(checkpointer=checkpointer, store=store, name="top_level_supervisor")
 
 def build_user_messages(user_input: str, retriever) -> list[dict]:
@@ -62,6 +66,54 @@ def build_user_messages(user_input: str, retriever) -> list[dict]:
     })
 
     return messages
+
+from langchain_core.messages import convert_to_messages
+
+
+def pretty_print_message(message, indent=False):
+    pretty_message = message.pretty_repr(html=True)
+    if not indent:
+        print(pretty_message)
+        return
+
+    indented = "\n".join("\t" + c for c in pretty_message.split("\n"))
+    print(indented)
+
+
+def pretty_print_messages(update, last_message=False):
+    is_subgraph = False
+
+    # Check if update is a tuple and unpack
+    if isinstance(update, tuple) and len(update) == 2:
+        ns, update = update
+
+        # Make sure ns is a subscriptable sequence
+        if isinstance(ns, (list, tuple)) and len(ns) == 0:
+            return
+
+        if isinstance(ns, (list, tuple)) and isinstance(ns[-1], str):
+            graph_id = ns[-1].split(":")[0]
+            print(f"Update from subgraph {graph_id}:\n")
+            is_subgraph = True
+        else:
+            print("⚠️ Unexpected type for namespace (ns), skipping subgraph print.")
+            return
+
+    for node_name, node_update in update.items():
+        update_label = f"Update from node {node_name}:"
+        if is_subgraph:
+            update_label = "\t" + update_label
+
+        print(update_label + "\n")
+
+        messages = convert_to_messages(node_update["messages"])
+        if last_message:
+            messages = messages[-1:]
+
+        for m in messages:
+            pretty_print_message(m, indent=is_subgraph)
+        print("\n")
+
 
 # -------------------------------
 # ✅ Main Execution
@@ -100,6 +152,6 @@ async def run_workflow_stream(
                 config=config,
                 stream_mode=["messages", "updates"]
             ):
-                print(step)
-                print("\n")
+                pretty_print_messages(step)
+                
                 yield step
