@@ -1,29 +1,17 @@
+import os
 from langgraph_supervisor import create_supervisor
-
+from utils.prompts import load_prompt
 
 def get_sales_supervisor(llm, agents):
+    from langgraph_supervisor.handoff import create_forward_message_tool
+    forwarding_tool = create_forward_message_tool("sales_supervisor")
+    prompt_path = os.path.join(os.path.dirname(__file__), "sales_supervisor_prompt.md")
+    prompt_text = load_prompt(prompt_path)
     return create_supervisor(
         agents,
         model=llm,
         supervisor_name="sales_supervisor",
-        prompt="""You are the Sales Team Supervisor managing order fulfillment operations.
-
-    Your team consists of:
-    1. order_agent: Handles order creation, modifications, and order-related inquiries
-    2. shipment_agent: Manages shipping, tracking, and delivery operations
-    3. invoice_agent: Processes billing, invoicing, and payment-related tasks
-    
-    Route requests based on these guidelines:
-    - Order creation, updates, cancellations → order_agent
-    - Shipping, tracking, delivery issues → shipment_agent  
-    - Billing, invoicing, payments, refunds → invoice_agent
-    
-    Ensure proper workflow:
-    1. Orders must be created before invoicing
-    2. Orders must be invoiced before shipping
-    3. Coordinate between agents for complex multi-step processes
-    
-    Always prioritize customer satisfaction and operational efficiency.
-    """,
-        output_mode="full_history"
+        prompt=prompt_text,
+        output_mode="full_history",
+        tools=[forwarding_tool]
     ).compile( name="sales_supervisor")

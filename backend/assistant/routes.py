@@ -57,11 +57,14 @@ def is_meaningful_response(content: str) -> bool:
     )
 
 def is_valid_ai_message(message: AIMessage) -> bool:
+    name = getattr(message, "name", "")
+    if name is None:
+        name = ""
     return (
         isinstance(message, AIMessage)
         and message.content.strip()
         and is_meaningful_response(message.content)
-        and re.match(r".*_agent$", getattr(message, "name", ""))
+        and re.match(r".*_agent$", name)
     )
 
 async def stream_agent_response(

@@ -1,6 +1,6 @@
 import logging
 from langchain_core.tools import tool
-from .schemas import ViewCustomerInput,CreateCustomerInput,AddressInput
+from .schemas import ViewCustomerInput,CreateCustomerInput,AddressInput,ListOrdersByCustomerIdInput
 from magento.client import get_magento_client
 from typing import  Optional
 from utils.log import Logger
@@ -111,4 +111,49 @@ def create_customer(
         }
     except Exception as e:
         return {"error": f"Failed to create customer: {str(e)}"}
-customer_tools=[get_customer_info,create_customer]        
+    
+@tool(args_schema=ListOrdersByCustomerIdInput)
+def list_orders_by_customer_id(customer_id: int):
+    """
+    List all orders placed by a customer using their Magento customer ID.
+
+    Args:
+        customer_id: The Magento customer ID.
+
+    Returns:
+        A list of order summaries.
+    """
+    logger.info(f"list_orders_by_customer_id tool invoked for customer_id={customer_id}")
+    try:
+        endpoint = (
+            f'orders?searchCriteria[filterGroups][0][filters][0][field]=customer_id&'
+            f'searchCriteria[filterGroups][0][filters][0][value]={customer_id}&'
+            f'searchCriteria[filterGroups][0][filters][0][condition_type]=eq'
+        )
+        response = magento_client.send_request(endpoint=endpoint, method="GET")
+        orders = response.get("items", [])
+
+        if not orders:
+            return {"message": "No orders found for this customer", "done": True}
+
+        order_summaries = []
+        for order in orders:
+            order_summaries.append({
+                "order_id": order.get("entity_id"),
+                "status": order.get("status"),
+                "grand_total": order.get("grand_total"),
+                "currency": order.get("order_currency_code"),
+                "created_at": order.get("created_at")
+            })
+
+        return {
+            "customer_id": customer_id,
+            "orders": order_summaries,
+            "status": "success",
+            "done": True
+        }
+
+    except Exception as e:
+        return {"error": f"Failed to retrieve orders: {str(e)}", "done": True}
+        
+customer_tools=[get_customer_info,create_customer,list_orders_by_customer_id]        

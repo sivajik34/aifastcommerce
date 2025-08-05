@@ -13,7 +13,9 @@ magento_client=get_magento_client()
 def create_shipment(order_id: int, items: List[ShipmentItem], notify: bool = True,
                     carrier_code: str = "custom", track_number: str = "N/A", title: str = "Standard Shipping"):
     """Create a shipment for an order. Provide order_id and items (order_item_id, qty)."""
+
     logger.info(f"🚚 Creating shipment for order_id={order_id} with items={items}")
+    
     payload = {
         "items": [item.dict() for item in items],
         "notify": notify,
@@ -36,5 +38,5 @@ def create_shipment(order_id: int, items: List[ShipmentItem], notify: bool = Tru
     }
     
     result = magento_client.send_request(f"order/{order_id}/ship", method="POST",data=payload)
-    return result
+    return {"shipment_id": result,"done":True,"status":"success","message":"shipment created successfully."}
 tools=[create_shipment]

@@ -42,7 +42,7 @@ def create_invoice(order_id: int, items: List[InvoiceItem], comment: str = "Invo
             method="POST",
             data=payload
         )
-        return {"invoice_id": invoice_response}
+        return {"invoice_id": invoice_response,"done":True,"status":"success","message":"invoice created successfully."}
     except Exception as e:
         logger.error(f"Error creating invoice: {str(e)}")
         return {"error": str(e)}
