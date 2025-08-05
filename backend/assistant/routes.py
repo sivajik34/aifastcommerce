@@ -23,13 +23,27 @@ logger = Logger(name="agent_routes", log_file="Logs/app.log", level=logging.DEBU
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
  
+def to_serializable(obj):
+    if hasattr(obj, "dict"):
+        return obj.dict()  # for Pydantic
+    elif hasattr(obj, "__dict__"):
+        return obj.__dict__  # for regular classes
+    elif isinstance(obj, (list, tuple)):
+        return [to_serializable(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {k: to_serializable(v) for k, v in obj.items()}
+    return str(obj)  # fallback for simple types
 
 def extract_interrupt_message(message: dict) -> str:
     """Format and return the interruption message."""
     interrupt = message["__interrupt__"][0]
     logger.info(f"🛑 Workflow interrupted. Awaiting user input: {interrupt.value}")
 
-    value = interrupt.value[0]
+    if isinstance(interrupt.value, list) and len(interrupt.value) > 0:
+        value = interrupt.value[0]
+    else:
+        value = {}
+
     action_request = value.get("action_request", {})
     tool_name = action_request.get("action", "unknown")
     args = action_request.get("args", {})
@@ -41,7 +55,7 @@ def extract_interrupt_message(message: dict) -> str:
         "interruption": {
             "type": tool_name,
             "message": value.get("description", ""),
-            "args": args
+            "args": to_serializable(args)
         }
     })
 

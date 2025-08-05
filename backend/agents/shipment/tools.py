@@ -12,10 +12,10 @@ magento_client=get_magento_client()
 @tool(args_schema=ShipmentInput)
 def create_shipment(order_id: int, items: List[ShipmentItem], notify: bool = True,
                     carrier_code: str = "custom", track_number: str = "N/A", title: str = "Standard Shipping"):
-    """Create a shipment for an order. Provide order_id and items (order_item_id, qty)."""
+    """Create a shipment for an order. If shipment items information required, first try to get order information from order agent."""
 
     logger.info(f"🚚 Creating shipment for order_id={order_id} with items={items}")
-    
+
     payload = {
         "items": [item.dict() for item in items],
         "notify": notify,

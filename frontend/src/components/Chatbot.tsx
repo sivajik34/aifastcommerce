@@ -69,34 +69,44 @@ export default function Chatbot() {
   }
 
   async function sendMessage() {
-    if (!input.trim() || !sessionId) return;
+  if (!input.trim() || !sessionId) return;
 
-    const userMessage = input.trim();
-    setMessages((msgs) => [...msgs, { from: "user", text: userMessage }]);
-    setInput("");
-    setIsLoading(true);
+  const userMessage = input.trim();
+  setMessages((msgs) => [...msgs, { from: "user", text: userMessage }]);
+  setInput("");
+  setIsLoading(true);
 
-    try {
-      const response = await fetch("/assistant/chat/stream", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId, message: userMessage }),
-      });
+  try {
+    const response = await fetch("/assistant/chat/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, message: userMessage }),
+    });
 
-      if (!response.ok || !response.body) throw new Error("Unable to connect");
+    if (!response.ok || !response.body) throw new Error("Unable to connect");
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder("utf-8");
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
 
-      let botResponse = "";
-      setMessages((msgs) => [...msgs, { from: "bot", text: "" }]);
+    let botResponse = "";
+    let jsonBuffer = "";
+    let jsonProcessed = false;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
+    // Show initial empty bot message to update as we stream
+    setMessages((msgs) => [...msgs, { from: "bot", text: "" }]);
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true }).trim();
+
+      // Skip empty chunks
+      if (!chunk) continue;
+
+      // If we’ve already parsed JSON, treat everything else as bot response
+      if (jsonProcessed) {
         botResponse += chunk;
-
         setMessages((msgs) => {
           const updated = [...msgs];
           const last = updated[updated.length - 1];
@@ -105,32 +115,60 @@ export default function Chatbot() {
           }
           return updated;
         });
+        continue;
       }
 
-      try {
-        const parsed = JSON.parse(botResponse);
-        if (parsed.interruption?.type) {
-          setPendingAction({
-            type: parsed.interruption.type,
-            args: parsed.interruption.args,
-          });
-          setMessages((msgs) => [...msgs.slice(0, -1), {
-            from: "bot",
-            text: parsed.interruption.message || "An action is pending.",
-          }]);
-        }
-      } catch {}
+      // Try to parse JSON if the chunk starts like a JSON object
+      if (chunk.startsWith("{") || chunk.startsWith("[")) {
+        jsonBuffer += chunk;
 
-    } catch (error) {
-      console.error("Streaming error:", error);
-      setMessages((msgs) => [...msgs, {
-        from: "bot",
-        text: `Sorry, something went wrong: ${(error as Error)?.message || "Unknown error."}`,
-      }]);
-    } finally {
-      setIsLoading(false);
+        try {
+          const parsed = JSON.parse(jsonBuffer);
+
+          if (parsed.interruption?.type) {
+            setPendingAction({
+              type: parsed.interruption.type,
+              args: parsed.interruption.args,
+            });
+
+            setMessages((msgs) => [...msgs.slice(0, -1), {
+              from: "bot",
+              text: parsed.interruption.message || "An action is pending.",
+            }]);
+
+            jsonProcessed = true;
+            jsonBuffer = "";
+          }
+        } catch (err) {
+          // JSON is probably incomplete — continue buffering
+        }
+
+        continue; // skip regular bot text until JSON is processed
+      }
+
+      // Not JSON — stream it to the chat UI
+      botResponse += chunk;
+
+      setMessages((msgs) => {
+        const updated = [...msgs];
+        const last = updated[updated.length - 1];
+        if (last?.from === "bot") {
+          updated[updated.length - 1] = { ...last, text: botResponse };
+        }
+        return updated;
+      });
     }
+  } catch (error) {
+    console.error("Streaming error:", error);
+    setMessages((msgs) => [
+      ...msgs,
+      { from: "bot", text: `Sorry, something went wrong: ${(error as Error)?.message || "Unknown error."}` },
+    ]);
+  } finally {
+    setIsLoading(false);
   }
+}
+
 
   async function clearHistory() {
     if (!sessionId) return;

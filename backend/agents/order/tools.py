@@ -2,6 +2,7 @@ import logging
 from typing import  List,Optional,Dict
 from datetime import datetime, timedelta
 from langchain_core.tools import tool
+from magento_tools.human import add_human_in_the_loop
 from .schemas import CreateOrderInput,OrderItem,GetOrderByIncrementIdInput,GetOrderIdInput,CancelOrderInput,GetOrdersInput
 from magento.client import get_magento_client
 from utils.log import Logger
@@ -361,4 +362,4 @@ def get_orders(status: Optional[str] = None,
     except Exception as e:
         return {"error": str(e)}
             
-tools=[get_orders,create_order_for_customer,create_order_for_guest,get_order_info_by_increment_id,get_order_id_by_increment,cancel_order]
+tools=[get_orders,add_human_in_the_loop(create_order_for_customer),add_human_in_the_loop(create_order_for_guest),get_order_info_by_increment_id,get_order_id_by_increment,cancel_order]

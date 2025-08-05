@@ -120,13 +120,18 @@ def pretty_print_messages(update, last_message=False):
         print(update_label + "\n")
 
         try:
-            messages = convert_to_messages(node_update["messages"])
-            if last_message:
-                messages = messages[-1:]
+            if isinstance(node_update, dict) and "messages" in node_update:
+                raw_messages = node_update["messages"]
+                messages = convert_to_messages(raw_messages)
 
-            for m in messages:
-                pretty_print_message(m, indent=is_subgraph)
-            print("\n")
+                if last_message:
+                    messages = messages[-1:]
+
+                for m in messages:
+                    pretty_print_message(m, indent=is_subgraph)
+                print("\n")
+            else:
+                logger.warning(f"⚠️ Skipping node {node_name} due to unexpected structure: {type(node_update)}")
 
         except Exception as e:
             logger.error(f"❌ Error in message conversion: {e}")
@@ -167,6 +172,10 @@ async def run_workflow_stream(
                 {"messages": messages},
                 config=config,
                 stream_mode=["messages", "updates"]
-            ):
-                pretty_print_messages(step)                
+            ):  
+                try:
+                    pretty_print_messages(step)
+                except Exception as e:
+                    logger.error(f"❌ Error in convert_to_messages: {e}")
+                    #logger.debug(f"Raw message content: {node_update.get('messages')}")                
                 yield step
