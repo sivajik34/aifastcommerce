@@ -25,7 +25,7 @@ class TeamConfig:
 
 TEAM_REGISTRY = [
     TeamConfig("sales_supervisor", [get_order_agent, get_shipment_agent, get_invoice_agent], get_sales_supervisor),
-    TeamConfig("catalog_team", [get_product_agent, get_category_agent, get_stock_agent], get_catalog_supervisor),
+    TeamConfig("catalog_supervisor", [get_product_agent, get_category_agent, get_stock_agent], get_catalog_supervisor),
     TeamConfig("customer_supervisor", [get_customer_agent], get_customer_supervisor),
     TeamConfig("directory_supervisor", [get_directory_agent], get_directory_supervisor),
 ]

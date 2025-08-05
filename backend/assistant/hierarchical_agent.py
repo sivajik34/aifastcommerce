@@ -12,6 +12,8 @@ from utils.embedding import initialize_embeddings_and_retriever
 from llm.factory import get_llm_strategy
 from utils.log import Logger
 from supervisors.registry import TEAM_REGISTRY, TeamConfig
+from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import convert_to_messages
 
 # -------------------------------
 # ✅ Setup Logging and Environment
@@ -39,7 +41,7 @@ def build_teams(llm) -> dict:
 def build_supervisor(llm, teams: dict, checkpointer):
     from langgraph_supervisor.handoff import create_forward_message_tool
 
-    forwarding_tool = create_forward_message_tool("supervisor")
+    forwarding_tool = create_forward_message_tool("top_level_supervisor")
     return create_supervisor(
         list(teams.values()),
         model=llm,
@@ -67,8 +69,6 @@ def build_user_messages(user_input: str, retriever) -> list[dict]:
 
     return messages
 
-from langchain_core.messages import convert_to_messages
-
 
 def pretty_print_message(message, indent=False):
     pretty_message = message.pretty_repr(html=True)
@@ -79,25 +79,38 @@ def pretty_print_message(message, indent=False):
     indented = "\n".join("\t" + c for c in pretty_message.split("\n"))
     print(indented)
 
-
 def pretty_print_messages(update, last_message=False):
     is_subgraph = False
 
-    # Check if update is a tuple and unpack
+    # ✅ CASE 1: Direct AIMessage or ToolMessage
+    if isinstance(update, (AIMessage, ToolMessage)):
+        print(f"Direct message of type {type(update).__name__}:\n")
+        pretty_print_message(update)
+        print("\n")
+        return
+
+    # ✅ CASE 2: Tuple (namespace, update_dict)
     if isinstance(update, tuple) and len(update) == 2:
-        ns, update = update
+        ns, actual_update = update
 
-        # Make sure ns is a subscriptable sequence
-        if isinstance(ns, (list, tuple)) and len(ns) == 0:
-            return
-
-        if isinstance(ns, (list, tuple)) and isinstance(ns[-1], str):
+        if isinstance(ns, (list, tuple)) and len(ns) > 0 and isinstance(ns[-1], str):
             graph_id = ns[-1].split(":")[0]
             print(f"Update from subgraph {graph_id}:\n")
             is_subgraph = True
+            update = actual_update
+        elif isinstance(ns, (AIMessage, ToolMessage)):
+            print(f"Direct message of type {type(ns).__name__}:\n")
+            pretty_print_message(ns)
+            print("\n")
+            return    
         else:
-            print("⚠️ Unexpected type for namespace (ns), skipping subgraph print.")
+            logger.warning(f"⚠️ Unexpected type for namespace (ns) {type(ns)}, skipping subgraph print.")
             return
+
+    # ✅ CASE 3: Supervisor update dict
+    if not isinstance(update, dict):
+        logger.warning(f"⚠️ Unexpected update type: {type(update)}. Skipping.")
+        return
 
     for node_name, node_update in update.items():
         update_label = f"Update from node {node_name}:"
@@ -106,14 +119,17 @@ def pretty_print_messages(update, last_message=False):
 
         print(update_label + "\n")
 
-        messages = convert_to_messages(node_update["messages"])
-        if last_message:
-            messages = messages[-1:]
+        try:
+            messages = convert_to_messages(node_update["messages"])
+            if last_message:
+                messages = messages[-1:]
 
-        for m in messages:
-            pretty_print_message(m, indent=is_subgraph)
-        print("\n")
+            for m in messages:
+                pretty_print_message(m, indent=is_subgraph)
+            print("\n")
 
+        except Exception as e:
+            logger.error(f"❌ Error in message conversion: {e}")
 
 # -------------------------------
 # ✅ Main Execution
@@ -152,6 +168,5 @@ async def run_workflow_stream(
                 config=config,
                 stream_mode=["messages", "updates"]
             ):
-                pretty_print_messages(step)
-                
+                pretty_print_messages(step)                
                 yield step
