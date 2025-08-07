@@ -1,10 +1,9 @@
 # 🧠 AI-Powered Magento/Adobe Commerce Assistant
 ![Screenshot](docs/images/multiagent.png)
-[![FastAPI](https://img.shields.io/badge/FastAPI-async--ready-green.svg)](https://fastapi.tiangolo.com/)
 [![LangChain](https://img.shields.io/badge/LangChain-Agents-blue)](https://www.langchain.com/)
 [![License](https://img.shields.io/github/license/sivajik34/aifastcommerce)](./LICENSE)
 
-An AI Assistant to interact with **Magento 2 / Adobe Commerce** via natural language — powered by **LangChain** and **FastAPI**.  
+An AI Assistant to interact with **Magento 2 / Adobe Commerce** via natural language — powered by **LangChain**.  
 Ideal for automating product, order, customer, and inventory management workflows using AI agents.
 
 ---
@@ -17,15 +16,14 @@ Ideal for automating product, order, customer, and inventory management workflow
 - ✅ Human-in-the-loop fallback mechanism
 - ✅ Product creation, order placement, cart handling, and more
 - ✅ Built-in support for guest and logged-in customers
-- ✅ FastAPI-based backend with Swagger docs
-- ✅ REST endpoints for chat
+
+
   
 ---
 
 ## 📦 Tech Stack
 
 - **AI/LLM**: LangChain, OpenAI (or other LLM providers)
-- **API**: FastAPI
 - **Database**: PostgreSQL (for chat history)
 - **Magento API**: OAuth 1.0 REST API
 
@@ -53,14 +51,8 @@ OPENAI_KEY=your_openai_key
 OPENAI_MODEL=your_openai_model
 LLM_SERVICE=your_llm_service
 
-SECRET=your_supersecretkey
-JWT_LIFETIME_SECONDS=3600
 
 DATABASE_URL_ASYNC=postgresql+asyncpg://digipin_user:digipin_pass@postgres:5432/digipin
 DATABASE_URL=postgresql://digipin_user:digipin_pass@127.0.0.1:5432/digipin
 CON_STR="host=localhost port=5432 dbname=digipin user=digipin_user password=digipin_pass"
-
-
-
-
-uvicorn app.main:app --reload
+PYTHONPATH=. chainlit run app.py
