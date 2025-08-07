@@ -6,11 +6,9 @@ import os
 import re
 import json
 import logging
-from collections.abc import AsyncGenerator
 from langgraph.types import Command
 from langgraph_supervisor import create_supervisor
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-
 from utils.memory import store
 from utils.embedding import initialize_embeddings_and_retriever
 from llm.factory import get_llm_strategy
@@ -18,9 +16,9 @@ from utils.log import Logger
 from supervisors.registry import TEAM_REGISTRY, TeamConfig
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.messages import convert_to_messages
-
-from langchain_core.messages import HumanMessage, AIMessageChunk
 from langchain_core.runnables.config import RunnableConfig
+from collections.abc import AsyncGenerator
+from langchain_core.messages import HumanMessage, AIMessageChunk
 from langgraph.graph import START, MessagesState, StateGraph
 from langgraph.types import Command
 import chainlit as cl
@@ -56,18 +54,14 @@ def extract_interrupt_message(message: dict) -> str:
     action_request = value.get("action_request", {})
     tool_name = action_request.get("action", "unknown")
     args = action_request.get("args", {})
-
+    description = value.get("description", "Action required")
     logger.info(f"Interrupt tool: {tool_name}, args: {args}")
+    actions = [
+        cl.Action(name="resume_workflow", payload={"args": args, "action": tool_name}, label="Continue")
+    ]
 
-    return json.dumps({
-        "response": str(interrupt.value),
-        "interruption": {
-            "type": tool_name,
-            "message": value.get("description", ""),
-            "args": to_serializable(args)
-        }
-    })
-
+    return description, actions
+    
 def is_meaningful_response(content: str) -> bool:
     lower = content.lower()
     return (
@@ -226,6 +220,10 @@ def pretty_print_messages(update, last_message=False):
         except Exception as e:
             logger.error(f"❌ Error in message conversion: {e}")
 
+@cl.action_callback("resume_workflow")
+async def handle_resume(action: cl.Action):
+    logger.info("Resuming from interruption...")
+    await main(cl.Message(content="Resuming..."), came_from_resume=True, command=action.payload)
 
 @cl.on_message
 async def main(message: cl.Message,came_from_resume=None,command=""):
@@ -251,8 +249,10 @@ async def main(message: cl.Message,came_from_resume=None,command=""):
         }
 
         if came_from_resume:
-            action={}
-            command = Command(resume=[action])
+            
+            #parsed_command = json.loads(command)
+            logging.info(command)
+            command = Command(resume=[command])
             async for mode, step in supervisor.astream(
                 command,
                 config=config,
@@ -262,8 +262,9 @@ async def main(message: cl.Message,came_from_resume=None,command=""):
                     message = step[0] if isinstance(step, tuple) else step
 
                     if isinstance(message, dict) and "__interrupt__" in message:
-                        await cl.Message(content=extract_interrupt_message(message)).send()
-                        return   # Stop further streaming on interruption
+                        content, actions = extract_interrupt_message(message)
+                        await cl.Message(content=content, actions=actions).send()
+                        return  # Stop further streaming on interruption
 
                     if is_valid_ai_message(message):
                         logger.info(f"✅ Yielding AI content: {message.content}")
@@ -282,8 +283,11 @@ async def main(message: cl.Message,came_from_resume=None,command=""):
                     message = step[0] if isinstance(step, tuple) else step
 
                     if isinstance(message, dict) and "__interrupt__" in message:
-                        await cl.Message(content=extract_interrupt_message(message)).send()
-                        return   # Stop further streaming on interruption
+                        #await cl.Message(content=extract_interrupt_message(message)).send()
+                        #return   # Stop further streaming on interruption
+                        content, actions = extract_interrupt_message(message)
+                        await cl.Message(content=content, actions=actions).send()
+                        return
 
                     if is_valid_ai_message(message):
                         logger.info(f"✅ Yielding AI content: {message.content}")
