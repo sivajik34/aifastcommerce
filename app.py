@@ -41,26 +41,7 @@ def to_serializable(obj):
         return {k: to_serializable(v) for k, v in obj.items()}
     return str(obj)  # fallback for simple types
 
-def extract_interrupt_message(message: dict) -> str:
-    """Format and return the interruption message."""
-    interrupt = message["__interrupt__"][0]
-    logger.info(f"🛑 Workflow interrupted. Awaiting user input: {interrupt.value}")
 
-    if isinstance(interrupt.value, list) and len(interrupt.value) > 0:
-        value = interrupt.value[0]
-    else:
-        value = {}
-
-    action_request = value.get("action_request", {})
-    tool_name = action_request.get("action", "unknown")
-    args = action_request.get("args", {})
-    description = value.get("description", "Action required")
-    logger.info(f"Interrupt tool: {tool_name}, args: {args}")
-    actions = [
-        cl.Action(name="resume_workflow", payload={"args": args, "action": tool_name}, label="Continue")
-    ]
-
-    return description, actions
     
 def is_meaningful_response(content: str) -> bool:
     lower = content.lower()
@@ -220,19 +201,74 @@ def pretty_print_messages(update, last_message=False):
         except Exception as e:
             logger.error(f"❌ Error in message conversion: {e}")
 
-@cl.action_callback("resume_workflow")
-async def handle_resume(action: cl.Action):
-    logger.info("Resuming from interruption...")
-    await main(cl.Message(content="Resuming..."), came_from_resume=True, command=action.payload)
+ 
+
+def extract_interrupt_message(message: dict) -> tuple[str, list[cl.Action]]:
+    """Format and return the interruption message and Chainlit actions."""
+    interrupt = message["__interrupt__"][0]
+    logger.info(f"🛑 Workflow interrupted. Awaiting user input: {interrupt.value}")
+
+    if isinstance(interrupt.value, list) and len(interrupt.value) > 0:
+        value = interrupt.value[0]
+    else:
+        value = {}
+
+    action_request = value.get("action_request", {})
+    tool_name = action_request.get("action", "unknown")
+    args = action_request.get("args", {})
+    description = value.get("description", "Action required")
+    logger.info(f"Interrupt tool: {tool_name}, args: {args}")
+
+    actions = [
+        cl.Action(name="accept",  label="✅ Accept",payload={"value":"accept"}),
+        cl.Action(name="edit", label="✏️ Edit",payload={"value":"edit"}),
+        cl.Action(name="response", label="💬 Respond",payload={"value":"response"}),
+    ]
+
+    return description, actions, tool_name, args
+
+
+async def handle_interrupt_resume(message: dict, original_user_message: cl.Message):
+    description, actions, tool_name, args = extract_interrupt_message(message)
+
+    user_action = await cl.AskActionMessage(
+        content=f"**Tool:** `{tool_name}`\n\n**Message:** {description}\n\n**Arguments:**\n```json\n{json.dumps(args, indent=2)}\n```",
+        actions=actions,
+        timeout=180
+    ).send()
+
+    if not user_action:
+        await cl.Message("❌ No action selected.").send()
+        return None
+    value=""
+    if user_action and user_action.get("payload").get("value"):
+        value=user_action.get("payload").get("value")
+    
+    if value == "accept":        
+        return Command(resume=[{"type": "accept"}])
+    elif value == "edit":
+        user_input = await cl.AskUserMessage("✏️ Please provide the updated arguments (JSON):").send()
+        try:
+            updated_args = json.loads(user_input.get("content", "{}"))
+        except Exception as e:
+            await cl.Message(f"❌ Invalid JSON: {e}").send()
+            return None
+        return Command(resume=[{"type": "edit", "args": {"args": updated_args}}])
+    elif value == "response":
+        user_input = await cl.AskUserMessage("💬 Please provide a message to respond with:").send()
+        return Command(resume=[{"type": "response", "args": user_input.get("content", "")}])
+    else:
+        await cl.Message("❌ Unsupported action.").send()
+        return None
+
 
 @cl.on_message
-async def main(message: cl.Message,came_from_resume=None,command=""):
+async def main(message: cl.Message, came_from_resume=None, command=""):
     answer = cl.Message(content="")
-    #await answer.send()
 
     config: RunnableConfig = {
         "configurable": {"thread_id": cl.context.session.thread_id}
-    }    
+    }
 
     embeddings, retriever = initialize_embeddings_and_retriever()
     llm = initialize_llm()
@@ -240,59 +276,34 @@ async def main(message: cl.Message,came_from_resume=None,command=""):
     db_url = os.getenv("DATABASE_URL")
 
     async with AsyncPostgresSaver.from_conn_string(db_url) as checkpointer:
-        #await checkpointer.setup()
         supervisor = build_supervisor(llm, teams, checkpointer)
-        #print(supervisor.get_graph().draw_mermaid())
+
         config = {
             "configurable": {"thread_id": cl.context.session.thread_id},
             "recursion_limit": 50
         }
 
-        if came_from_resume:
-            
-            #parsed_command = json.loads(command)
-            logging.info(command)
-            command = Command(resume=[command])
-            async for mode, step in supervisor.astream(
-                command,
-                config=config,
-                stream_mode=["messages", "updates"]
-            ):
-                try:
-                    message = step[0] if isinstance(step, tuple) else step
+        run_input = command if came_from_resume else {"messages": build_user_messages(message, retriever)}
 
-                    if isinstance(message, dict) and "__interrupt__" in message:
-                        content, actions = extract_interrupt_message(message)
-                        await cl.Message(content=content, actions=actions).send()
-                        return  # Stop further streaming on interruption
+        async for mode, step in supervisor.astream(
+            run_input,
+            config=config,
+            stream_mode=["messages", "updates"]
+        ):
+            try:
+                current = step[0] if isinstance(step, tuple) else step
 
-                    if is_valid_ai_message(message):
-                        logger.info(f"✅ Yielding AI content: {message.content}")
-                        for token in message.content:
-                            await answer.stream_token(token)                        
-                except Exception as e:
-                    logger.error(f"❌ Streaming error: {e}")
-        else:
-            messages = build_user_messages(message, retriever)
-            async for mode, step in supervisor.astream(
-                {"messages": messages},
-                config=config,
-                stream_mode=["messages", "updates"]
-            ):  
-                try:
-                    message = step[0] if isinstance(step, tuple) else step
+                if isinstance(current, dict) and "__interrupt__" in current:
+                    new_command = await handle_interrupt_resume(current, message)
+                    if new_command:
+                        await main(message, came_from_resume=True, command=new_command)
+                    return
 
-                    if isinstance(message, dict) and "__interrupt__" in message:
-                        #await cl.Message(content=extract_interrupt_message(message)).send()
-                        #return   # Stop further streaming on interruption
-                        content, actions = extract_interrupt_message(message)
-                        await cl.Message(content=content, actions=actions).send()
-                        return
+                if is_valid_ai_message(current):
+                    logger.info(f"✅ Yielding AI content: {current.content}")
+                    for token in current.content:
+                        await answer.stream_token(token)
+            except Exception as e:
+                logger.error(f"❌ Streaming error: {e}")
 
-                    if is_valid_ai_message(message):
-                        logger.info(f"✅ Yielding AI content: {message.content}")
-                        for token in message.content:
-                            await answer.stream_token(token)                        
-                except Exception as e:
-                    logger.error(f"❌ Streaming error: {e}")
         await answer.send()
