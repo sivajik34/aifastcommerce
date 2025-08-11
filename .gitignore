@@ -82,7 +82,9 @@ scripts/__pycache__/
 scripts/*.log
 scripts/*.bak
 
-frontend/node_modules/
+chainlit-datalayer/node_modules/
+chainlit-datalayer/.env
+chainlit-datalayer/.data
 frontend/.DS_Store
 frontend/.env
 frontend/.eslintcache
@@ -90,3 +92,5 @@ frontend/build/
 frontend/dist/
 
 vectorstores/
+
+.chainlit/

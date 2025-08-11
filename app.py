@@ -88,9 +88,9 @@ def auth_callback(username: str, password: str):
 # -------------------------------
 # ✅ Utilities
 # -------------------------------
-def load_prompt_text(filepath="top_level_prompt.txt") -> str:
+def load_prompt_text(filepath="top_level_prompt.md") -> str:
     base_path = os.path.dirname(__file__)
-    full_path = os.path.join(base_path, filepath)
+    full_path = os.path.join(base_path,"prompts", filepath)
     with open(full_path, "r", encoding="utf-8") as f:
         return f.read()
 
